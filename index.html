@@ -369,7 +369,9 @@ const MODEL_LABEL = { '': '預設', haiku: 'Haiku', sonnet: 'Sonnet', opus: 'Opu
 const hubBrain = (m) => BRAIN_NAME[m.brain || 'claude'] || m.brain;
 const canWeb = (m) => m.kind === 'gemini' || m.kind === 'claude' || (m.kind === 'assistant' && ['claude', 'gemini'].includes(m.brain || 'claude'));
 const canAct = (m) => m.kind === 'claude' || (m.kind === 'assistant' && (m.brain || 'claude') === 'claude');
-const hubAv = (m) => `<span class="hav ${m.kind === 'gemini' ? 'gemini' : m.kind === 'web' || m.kind === 'ai' ? 'web' : ''}">${m.kind === 'gemini' ? 'G' : m.kind === 'web' ? 'W' : m.kind === 'assistant' ? '🤖' : m.kind === 'ai' ? 'AI' : 'C'}</span>`;
+const HUB_COLORS = ['#c2410c', '#0f766e', '#7b5cd6', '#b91c5c', '#1d6fb8', '#5b8a4a', '#a16207', '#6d28d9', '#0e7490', '#be123c'];
+// Avatar: the member's first character on a colour picked from its id (the same member always gets the same colour).
+const hubAv = (m) => { let h = 0; for (const ch of String(m.id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; const first = [...String(m.name || '?').trim()][0] || '?'; return `<span class="hav" style="background:${HUB_COLORS[h % HUB_COLORS.length]}">${esc(first.toUpperCase())}</span>`; };
 const hubSub = (m) => (m.kind === 'gemini' ? `Gemini API（免費額度）${m.web ? ' · 🌐' : ''}` : m.kind === 'web' ? `${m.source} 網頁版 · ${m.date || ''} · 摘要記憶` : m.kind === 'assistant' ? `助手（${hubBrain(m)}）· ${m.role.slice(0, 20)}${m.web ? ' · 🌐' : ''}${m.act ? ' · ✋' : ''}` : m.kind === 'ai' ? '只做討論，不能改檔' : `${m.cwd || ''}${m.web ? ' · 🌐' : ''}${m.act ? ' · ✋' : ''}`);
 const hubKindText = (m) => (!m ? '' : m.kind === 'claude' ? `Claude 對話分身 · ${m.cwd}` : m.kind === 'web' ? `${m.source} 網頁版對話（Gemini 依摘要回答）` : m.kind === 'assistant' ? ((m.brain || 'claude') === 'claude' ? `Claude 助手 · ${m.folder || '沒有指定資料夾'}` : `${hubBrain(m)} 助手 · 只靠聊天室最近的對話，沒有檔案工具`) : m.kind === 'ai' ? m.name : 'Gemini API');
 const hubTime = (t) => new Date(t).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });

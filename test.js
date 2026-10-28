@@ -257,15 +257,26 @@ const path = require('path');
       await hub.post(dm.id, '再看一次').done;
       assert.strictEqual(calls.claude[1].resume, bot.sessionId, 'same conversation → it remembers');
       assert.ok(!dm.messages.some((x) => x.web), 'no web unless switched on');
+      // Memory is per chat: in a group the assistant starts its own conversation, kept on the group.
+      const gm1 = hub.createGroup({ name: '記憶甲', members: [bot.id, 'gemini'], noFolder: true });
+      const gm2 = hub.createGroup({ name: '記憶乙', members: [bot.id, 'gemini'], noFolder: true });
+      const n0 = calls.claude.length;
+      await hub.post(gm1.id, '@全部 第一句').done;
+      await hub.post(gm1.id, '@全部 第二句').done;
+      await hub.post(gm2.id, '@全部 另一個專案').done;
+      const gc = calls.claude.slice(n0);
+      assert.ok(!gc[0].resume && gc[1].resume === gm1.forks[bot.id] && !gc[2].resume, 'each group has its own conversation, not the private chat one');
+      assert.ok(gm1.forks[bot.id] && gm2.forks[bot.id] && bot.sessionId === 'bbbbbbbb-1111-2222-3333-444444444444', 'the private chat memory is untouched');
+      hub.remove(gm1.id); hub.remove(gm2.id);
       // The web switches.
       assert.throws(() => hub.setWeb('ai-ollama', true), /找不到/);
       hub.setWeb(bot.id, true);
       await hub.post(dm.id, '查一下賠率').done;
-      assert.ok(calls.claude[2].tools === 'Read,Glob,Grep,WebSearch,WebFetch', 'web adds lookups only, never write or shell');
+      assert.ok(calls.claude[calls.claude.length - 1].tools === 'Read,Glob,Grep,WebSearch,WebFetch', 'web adds lookups only, never write or shell');
       assert.deepStrictEqual(dm.messages[dm.messages.length - 1].web, [{ tool: 'WebSearch', target: '走地賠率' }], 'what it looked up is shown');
       hub.updateAssistant(bot.id, { role: '改當行銷顧問' });
       await hub.post(dm.id, '你現在是誰').done;
-      assert.ok(/行銷顧問/.test(calls.claude[3].system), 'a changed role applies at once');
+      assert.ok(/行銷顧問/.test(calls.claude[calls.claude.length - 1].system), 'a changed role applies at once');
       const gdm = hub.dm('gemini');
       await hub.post(gdm.id, '嗨').done;
       assert.strictEqual(calls.gemini[calls.gemini.length - 1].search, false);
