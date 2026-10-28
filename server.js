@@ -176,7 +176,7 @@ function pickFolderWindows() {
   });
 }
 
-function createLite({ dataDir, port = 8300, password, call, limits, probe, connected, pick } = {}) {
+function createLite({ dataDir, port = 8300, password, call, limits, probe, connected, pick, quit } = {}) {
   dataDir = dataDir || process.env.STUDIO_LITE_DATA || path.join(__dirname, 'data');
   if (!call) {
     const llm = require('./lib/llm');
@@ -197,6 +197,8 @@ function createLite({ dataDir, port = 8300, password, call, limits, probe, conne
 
   const routes = {
     ...hubhttp.routes(hub, (r) => ({ [STATUS]: 202, body: r })),
+    // ⏻ Stop the program from the page (the launcher has no window to close).
+    'POST /api/lite/quit': () => { if (quit) setTimeout(quit, 300); return { ok: true, stopping: !!quit }; },
     'GET /api/lite/usage': () => budget.usage(limitsNow()),
     // 📈 The ledger's reports: per chat, per member, per round, and the ten dearest calls.
     'GET /api/lite/ledger': () => {
@@ -285,7 +287,8 @@ function openBrowser(url) {
 function main() {
   const argv = process.argv.slice(2);
   const port = Number(process.env.STUDIO_LITE_PORT || 8300);
-  const lite = createLite({ port });
+  const bye = (code) => { lite.server.close(); process.exit(code); };
+  const lite = createLite({ port, quit: () => bye(0) });
   lite.server.on('error', (e) => {
     if (e.code !== 'EADDRINUSE') throw e;
     console.error(`連接埠 ${port} 已經有人在用：團隊中樞可能已經開著了，打開 http://localhost:${port} 就好。`);
@@ -311,7 +314,6 @@ function main() {
     console.log(`🔢 今天的 Token：${b.used.toLocaleString()}${b.capOn ? ` / 上限 ${b.cap.toLocaleString()}` : '（沒有上限）'}`);
     if (!argv.includes('--no-open')) openBrowser(`${url}/#once=${lite.auth.onceLink()}`);
   });
-  const bye = (code) => { lite.server.close(); process.exit(code); };
   process.on('SIGINT', () => bye(0));
   process.on('SIGTERM', () => bye(0));
 }

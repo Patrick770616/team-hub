@@ -223,6 +223,7 @@
     <span class="chip" id="tok" title="今天所有回覆用掉的 Token（輸入加輸出），每天自動歸零"></span>
     <div class="controls">
       <button class="btn" id="liteSet">⚙️ 設定</button>
+      <button class="btn" id="liteQuit" title="把團隊中樞整個關掉（要再用時從桌面捷徑開）">⏻ 關閉</button>
       <button class="btn" id="liteOut" title="這個瀏覽器登出，下次要重新輸入密碼">登出</button>
     </div>
   </header>
@@ -293,6 +294,11 @@ hubEl('login').addEventListener('submit', async (e) => {
   if (!r.ok) { hubEl('loginMsg').textContent = r.error || '登入失敗'; return; }
   hubEl('loginPw').value = '';
   start();
+});
+hubEl('liteQuit').addEventListener('click', async () => {
+  if (!confirm('要關閉團隊中樞嗎？關閉後聊天室會停止（紀錄都會保留），要用時再從桌面捷徑開。')) return;
+  await post('/api/lite/quit', {}).catch(() => {});
+  document.body.innerHTML = '<div style="padding:60px 20px;text-align:center;font-size:18px">團隊中樞已關閉。可以關掉這個分頁了。</div>';
 });
 hubEl('liteOut').addEventListener('click', async () => { await post('/api/logout'); showLogin(); });
 async function boot() {
@@ -706,7 +712,7 @@ hubEl('hubModalClose').addEventListener('click', () => { hubEl('hubModal').hidde
 const mb = (n) => (n >= 1e6 ? `${Math.round(n / 1e6)} MB` : `${Math.max(1, Math.round(n / 1e3))} KB`);
 // Only the AIs that are actually connected are offered (the rest are listed below with how to connect them).
 const BRAIN_NOTE = { claude: '能讀資料夾、有自己的記憶、可開改檔', gemini: '只靠聊天室對話，可上網搜尋', ollama: '本機，只靠聊天室對話', openai: '只靠聊天室對話', antigravity: '只靠聊天室對話' };
-const notConnected = (list) => (list.some((x) => !x.ok) ? `<div class="hint" style="margin-top:10px">還沒串接（所以沒有列出）：${list.filter((x) => !x.ok).map((x) => `${esc(x.name)} → ${esc(x.hint)}`).join('；')}。設定在團隊中樞資料夾的 .env，改完要重開。</div>` : '');
+const notConnected = (list) => (list.some((x) => !x.ok) ? `<div class="hint" style="margin-top:10px">還沒串接（所以沒有列出）：${list.filter((x) => !x.ok).map((x) => `${esc(x.name)} → ${esc(x.hint)}`).join('；')}。</div>` : '');
 hubEl('hubAssistant').addEventListener('click', async () => {
   hubModal('🤖 新增助手', '<div class="none">檢查已串接的 AI…</div>');
   const list = await hubGet('/api/hub/brains').catch(() => null);
@@ -728,15 +734,60 @@ hubEl('hubAssistant').addEventListener('click', async () => {
     <button class="btn" id="asGo" style="margin-top:8px">建立助手</button> <span class="msg" id="asMsg"></span>${notConnected(list)}`;
   hubEl('asBrain').dispatchEvent(new Event('change', { bubbles: true })); // hide what the first brain can't do
 });
-hubEl('hubAddAi').addEventListener('click', async () => {
-  hubModal('🔌 加入其他 AI', '<div class="none">檢查已串接的 AI…</div>');
-  const list = await hubGet('/api/hub/brains').catch(() => null);
-  if (!Array.isArray(list)) { hubEl('hubModalBody').innerHTML = '<div class="none">讀不到已串接的 AI，請稍後再試。</div>'; return; }
-  const others = list.filter((x) => ['ollama', 'openai', 'antigravity'].includes(x.id));
-  const ok = others.filter((x) => x.ok);
-  hubEl('hubModalBody').innerHTML = `<div class="hint">這些 AI 只能參與討論（文字），不能看檔案或改檔。送出前會先遮掉金鑰和本機路徑。（Claude 和 Gemini 本來就能用。）</div>
-    ${ok.length ? ok.map((x) => `<div style="margin-top:8px"><button class="btn" data-addai="${esc(x.id)}">＋ ${esc(x.name)}</button></div>`).join('') : '<div class="none" style="margin-top:8px">還沒有串接其他 AI。</div>'}<span class="msg" id="aiMsg"></span>${notConnected(others)}`;
+// 🔌 Connect the other AIs right here: fill in, save (written to .env, works at once), test, add as a member.
+async function renderAiSetup(msgs = {}) {
+  const [st, list] = await Promise.all([hubGet('/api/hub/aisetup').catch(() => null), hubGet('/api/hub/brains').catch(() => null)]);
+  if (!st || !Array.isArray(list)) { hubEl('hubModalBody').innerHTML = '<div class="none">讀不到設定，請稍後再試。</div>'; return; }
+  const live = Object.fromEntries(list.map((x) => [x.id, x.ok]));
+  const chip = (on) => (on ? '<span style="color:#2e7d32">✅ 已可用</span>' : '<span style="color:var(--muted)">○ 還沒設定</span>');
+  const card = (id, title, note, body, extra = '') => `<div class="aicard" style="border:1px solid var(--line,#ddd);border-radius:10px;padding:10px 12px;margin-top:10px">
+    <div style="display:flex;justify-content:space-between;gap:8px"><b>${title}</b>${chip(live[id])}</div><div class="hint" style="margin-top:4px">${note}</div>${body}
+    <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">${extra}<button class="btn" data-aitest="${id}">🔎 測試連線</button>${live[id] && !['gemini', 'claude'].includes(id) ? `<button class="btn" data-addai="${id}">＋ 加入成員</button>` : ''}<span class="msg" id="aim-${id}">${esc(msgs[id] || '')}</span></div></div>`;
+  const inp = (id, name, label, val, ph = '', type = 'text') => `<label style="display:block;margin-top:6px;font-size:13px">${label}<input class="note" id="f-${id}-${name}" type="${type}" value="${esc(val)}" placeholder="${esc(ph)}" autocomplete="off" style="display:block;width:100%;box-sizing:border-box"></label>`;
+  const o = st.ollama;
+  const ollamaModel = o.models.length
+    ? `<label style="display:block;margin-top:6px;font-size:13px">模型：<select class="note" id="f-ollama-model" style="display:block;width:100%">${o.model && !o.models.includes(o.model) ? `<option>${esc(o.model)}</option>` : ''}${o.models.map((x) => `<option${x === o.model ? ' selected' : ''}>${esc(x)}</option>`).join('')}</select></label>`
+    : inp('ollama', 'model', '模型名稱：', o.model, '例如 llama3.1（要先用 ollama pull 下載）');
+  const save = (id) => `<button class="btn" data-aisave="${id}">💾 儲存</button>`;
+  hubEl('hubModalBody').innerHTML = `<div class="hint">這些 AI 只能參與討論（文字），不能看檔案或改檔。送出前會先遮掉金鑰和本機路徑。設定存在團隊中樞資料夾的 .env，存好馬上生效，不用重開。</div>
+    ${card('claude', '🟠 Claude（訂閱）', st.claude.installed ? '用你的 Claude 訂閱，不用填金鑰，也不會走按量計費的 API。還沒登入就按下面的按鈕，會開一個登入視窗；完成後按「測試連線」。' : '還沒安裝 Claude Code：先到 https://claude.com/claude-code 安裝，再回來登入。', '', st.claude.installed ? '<button class="btn" data-ailogin="claude">🔑 登入 Claude 訂閱</button>' : '')}
+    ${card('ollama', '🦙 Ollama（本機，免費）', o.up ? '偵測到 Ollama 正在執行。' + (o.models.length ? '' : '但還沒有下載任何模型（命令列：ollama pull 模型名）。') : '偵測不到 Ollama：還沒安裝，或沒有在執行（到 ollama.com 下載安裝並開啟）。', ollamaModel, save('ollama'))}
+    ${card('openai', '🔗 OpenAI 相容服務', '任何相容 OpenAI 格式的服務（OpenRouter、本機 LM Studio 等）。這類服務通常按量計費，價格可以填，用量才算得準。', inp('openai', 'url', '網址：', st.openai.url, 'https://…/v1') + inp('openai', 'model', '模型名稱：', st.openai.model) + inp('openai', 'key', '金鑰：', '', st.openai.keySet ? '已設定（留空＝不變）' : '貼上金鑰', 'password') + '<div style="display:flex;gap:6px">' + inp('openai', 'priceIn', '輸入價（美元／百萬 Token）：', st.openai.priceIn) + inp('openai', 'priceOut', '輸出價：', st.openai.priceOut) + '</div>', save('openai') + (st.openai.keySet ? '<button class="btn" data-aiclear="openai">移除金鑰</button>' : ''))}
+    ${card('antigravity', '🛰 Antigravity（Google AI Pro）', st.antigravity.installed ? '已安裝 Antigravity CLI。按下面的按鈕會開一個登入視窗，選「Google OAuth」登入，完成後按「測試連線」。' : '還沒安裝 Antigravity CLI：先照 https://antigravity.google/docs/cli/ 安裝，再回來登入。', '', st.antigravity.installed ? '<button class="btn" data-ailogin="antigravity">🔑 用 Google 帳號登入</button>' : '')}
+    ${card('gemini', '✨ Gemini 金鑰', 'Gemini 本來就是內建成員；這裡只是設定它的金鑰（Google AI Studio 的免費金鑰）。', inp('gemini', 'key', '金鑰：', '', st.gemini.keySet ? '已設定（留空＝不變）' : '貼上金鑰', 'password'), save('gemini'))}
+    <span class="msg" id="aiMsg"></span>`;
+}
+hubEl('hubAddAi').addEventListener('click', () => {
+  hubModal('🔌 加入其他 AI', '<div class="none">檢查中…</div>');
+  renderAiSetup();
 });
+// One card's buttons: save, clear the key, test, sign in.
+async function aiSetupClick(e) {
+  const b = e.target.closest('[data-aisave],[data-aiclear],[data-aitest],[data-ailogin]');
+  if (!b) return false;
+  const id = b.dataset.aisave || b.dataset.aiclear || b.dataset.aitest || b.dataset.ailogin;
+  const say = (t) => { const el = hubEl('aim-' + id); if (el) el.textContent = t; return true; };
+  const val = (n) => { const el = hubEl(`f-${id}-${n}`); return el ? el.value : undefined; };
+  b.disabled = true;
+  try {
+    if (b.dataset.aitest) {
+      say('測試中…（可能要幾秒）');
+      const r = await post('/api/hub/aisetup/test', { provider: id });
+      return say(r.ok ? '✅ ' + r.detail : '❌ ' + (r.detail || r.error));
+    }
+    if (b.dataset.ailogin) {
+      const r = await post('/api/hub/aisetup/login', { provider: id });
+      return say(r.ok ? '已開啟登入視窗，登入完成後按「測試連線」。' : '❌ ' + (r.detail || r.error));
+    }
+    const names = { ollama: ['model'], openai: ['url', 'model', 'key', 'priceIn', 'priceOut'], gemini: ['key'] }[id];
+    const values = Object.fromEntries(names.map((n) => [n, val(n)]).filter(([, v]) => v !== undefined));
+    const r = await post('/api/hub/aisetup', { provider: id, values, clear: b.dataset.aiclear ? ['key'] : [] });
+    if (!r.ok) return say('❌ ' + r.error);
+    await renderAiSetup({ [id]: b.dataset.aiclear ? '已移除金鑰' : '已儲存。可以按「測試連線」確認。' });
+    hubRefresh();
+  } finally { b.disabled = false; }
+  return true;
+}
 hubEl('hubModalBody').addEventListener('change', (e) => {
   if (e.target.id !== 'asBrain') return;
   const b = e.target.value;
@@ -810,10 +861,11 @@ hubEl('hubModalBody').addEventListener('click', async (e) => {
     hubEl('hubModal').hidden = true;
     return hubRefresh();
   }
+  if (await aiSetupClick(e)) return;
   const ai = e.target.closest('[data-addai]');
   if (ai) {
     const r = await post('/api/hub/ai', { provider: ai.dataset.addai });
-    hubEl('aiMsg').textContent = r.ok ? `已加入「${r.member.name}」` : r.error;
+    const mm = hubEl('aim-' + ai.dataset.addai) || hubEl('aiMsg'); if (mm) mm.textContent = r.ok ? `已加入「${r.member.name}」` : r.error;
     if (r.ok) hubRefresh();
     return;
   }

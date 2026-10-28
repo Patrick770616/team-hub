@@ -334,7 +334,7 @@ const path = require('path');
       const part = new Hub({ dataDir: path.join(tmp, 'brdata'), call: hub.call, connected: () => ({ claude: true, gemini: true, ollama: false, openai: false, antigravity: false }) });
       assert.deepStrictEqual(part.brains().filter((b) => b.ok).map((b) => b.id), ['claude', 'gemini']);
       assert.ok(part.brains().filter((b) => !b.ok).every((b) => b.hint && b.name), 'not connected → says how to connect');
-      assert.throws(() => part.addAssistant({ name: 'O', role: 'x', brain: 'ollama' }), /Ollama.*還沒串接.*STUDIO_OLLAMA_MODEL/);
+      assert.throws(() => part.addAssistant({ name: 'O', role: 'x', brain: 'ollama' }), /Ollama.*還沒串接.*加入其他 AI/);
       assert.throws(() => part.addAi('openai'), /還沒串接/);
       assert.strictEqual(part.addAssistant({ name: 'G', role: 'x', brain: 'gemini' }).brain, 'gemini');
       assert.strictEqual(part.addAssistant({ name: 'C', role: 'x' }).brain, 'claude');
@@ -552,6 +552,29 @@ const path = require('path');
       await assert.rejects(hub.pickFolder(), /無法使用/);
       hub.pick = async () => other;
       assert.deepStrictEqual(await hub.pickFolder(), { ok: true, folder: other });
+      // 🔌 Settings from the page: written into the .env, live at once, a key never sent back.
+      {
+        const envFile = path.join(tmp, 'test.env');
+        fs.writeFileSync(envFile, '# mine\nGEMINI_API_KEY=keepme\n');
+        hub.envFile = envFile;
+        const keep = { ...process.env };
+        try {
+          hub.saveAiSetup('ollama', { model: 'llama3.1' });
+          assert.strictEqual(process.env.STUDIO_OLLAMA_MODEL, 'llama3.1');
+          hub.saveAiSetup('openai', { url: 'https://example.test/v1', model: 'm1', key: 'sk-secret-123', priceIn: '1', priceOut: '2' });
+          hub.saveAiSetup('openai', { model: 'm2', key: '' }); // a blank key keeps the old one
+          const txt = fs.readFileSync(envFile, 'utf8');
+          assert.ok(/# mine/.test(txt) && /GEMINI_API_KEY=keepme/.test(txt) && /STUDIO_OLLAMA_MODEL=llama3.1/.test(txt) && /STUDIO_OPENAI_MODEL=m2/.test(txt) && /STUDIO_OPENAI_KEY=sk-secret-123/.test(txt), txt);
+          const st = await hub.aiSetup();
+          assert.ok(st.openai.keySet && st.openai.model === 'm2' && !JSON.stringify(st).includes('sk-secret-123') && !JSON.stringify(st).includes('keepme'), 'a key is reported only as set');
+          assert.throws(() => hub.saveAiSetup('openai', { url: 'https://api.anthropic.com/v1' }), /訂閱/, 'never the per-token Claude API');
+          assert.throws(() => hub.saveAiSetup('openai', { url: 'ftp://x' }), /http/);
+          assert.throws(() => hub.saveAiSetup('openai', { model: 'a\nB=1' }), /換行/);
+          assert.throws(() => hub.saveAiSetup('claude', {}), /不在這裡/);
+          hub.saveAiSetup('openai', {}, ['key']);
+          assert.ok(!/STUDIO_OPENAI_KEY/.test(fs.readFileSync(envFile, 'utf8')) && !process.env.STUDIO_OPENAI_KEY, 'key removed');
+        } finally { for (const k of Object.keys(process.env)) if (!(k in keep)) delete process.env[k]; for (const [k, v] of Object.entries(keep)) process.env[k] = v; }
+      }
       delete process.env.GEMINI_API_KEY;
       console.log('✓ ✋ cards: real content shown, one-time ids, program rules (secrets, outside the folder, danger), backups, no keys to commands');
     }
