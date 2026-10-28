@@ -488,7 +488,7 @@ function hubMain() {
     ${!group && c.members[0] && canWeb(c.members[0]) ? `<button class="btn" id="hubWeb" title="${c.members[0].kind === 'gemini' ? '讓 Gemini 用 Google 搜尋' : '讓這位成員用 WebSearch／WebFetch 上網查資料（仍然不能改檔或執行指令）'}">🌐 上網：${c.members[0].web ? '開' : '關'}</button>` : ''}${!group && c.members[0] && c.members[0].kind === 'assistant' ? '<button class="btn" id="hubRole" title="修改角色">✏️ 角色</button>' : ''}${!group && c.members[0] && c.members[0].kind === 'assistant' && (c.members[0].brain || 'claude') === 'claude' ? `<button class="btn" id="hubModel" title="換這位助手用的 Claude 模型（越強越耗訂閱額度）">🧠 模型：${esc(MODEL_LABEL[c.members[0].model || ''])}</button>` : ''}${!group && c.members[0] && c.members[0].kind === 'assistant' && (c.members[0].brain || 'claude') === 'claude' ? '<button class="btn" id="hubFolder" title="更改這位助手負責的資料夾">📁 資料夾</button>' : ''}${!group && c.members[0] && canAct(c.members[0]) && c.members[0].act ? `<button class="btn" id="hubAuto" title="資料夾裡的改檔、寫檔和一般指令直接做，不再問你。危險指令、金鑰檔、資料夾以外的路徑還是會問。改檔前會自動備份。">⚡ 全自動：${c.members[0].auto ? '開' : '關'}</button>` : ''}${!group && c.members[0] && canAct(c.members[0]) && c.members[0].act ? `<button class="btn" id="hubSafe" title="只看不改的簡單指令（例如 git status、列出檔案）直接執行，不再問你。測試、安裝、刪除、改檔還是每次都問。">🛡 安全指令放行：${c.members[0].safe ? '開' : '關'}</button>` : ''}${!group && c.members[0] && canAct(c.members[0]) ? `<button class="btn" id="hubAct" title="改檔和執行指令：每一次都要你在畫面上按允許">✋ 可動手：${c.members[0].act ? '開' : '關'}</button>` : ''}
     ${group ? `<div class="seg" id="hubModeSeg"><button data-m="mention" class="${c.mode === 'mention' ? 'on' : ''}">＠ 點名模式</button><button data-m="auto" class="${c.mode === 'auto' ? 'on' : ''}">🔁 自主協商</button></div>` : ''}
     ${c.busy ? '<button class="btn" id="hubStop">⏹ 停止</button>' : ''}
-    ${group ? '<button class="btn" id="hubMembers" title="加入或移出成員">👥 成員</button><button class="btn" id="hubDel" title="刪除這個群組（不影響原本的對話）">🗑</button>' : ''}`;
+    ${group ? '<button class="btn" id="hubMembers" title="加入或移出成員">👥 成員</button><button class="btn" id="hubGFolderBtn" title="這個群組的專案資料夾">📁 ' + (c.folder ? '資料夾' : c.noFolder ? '無資料夾' : '設定資料夾') + '</button><button class="btn" id="hubPerm" title="這個群組裡，各位 Claude 成員能不能動手">✋ 權限</button><button class="btn" id="hubDel" title="刪除這個群組（不影響原本的對話）">🗑</button>' : ''}`;
   hubEl('hubAtBtn').hidden = !group;
   const names = c.members.map((m) => m.name);
   const box = hubEl('hubChat');
@@ -578,6 +578,15 @@ hubEl('hub').addEventListener('click', async (e) => {
     if (!r.ok) alert(r.error);
     return hubRefresh();
   }
+  if (e.target.closest('#hubGFolderBtn')) {
+    const c = hub.ch;
+    hubModal(`📁 「${c.name}」的專案資料夾`, `<div class="hint">群組裡的 Claude 助手，讀的和改的都是這個資料夾（不再用各自的資料夾）。更換後，之前開給成員的改檔權限會全部關閉。</div>
+      <div style="display:flex;gap:6px"><input class="note" id="gfIn" placeholder="完整路徑" value="${esc(c.folder || '')}" style="flex:1"><button class="btn" id="gfPick">📂 選擇…</button></div>
+      <label style="display:block;margin:6px 0"><input type="checkbox" id="gfNone" class="nopick" ${c.noFolder ? 'checked' : ''}> 這個群組不需要資料夾</label>
+      <div class="row"><span class="msg" id="hubGMsg"></span><button class="primary" id="gfSave">儲存</button></div>`);
+    return;
+  }
+  if (e.target.closest('#hubPerm')) { hubPermModal(); return; }
   if (e.target.closest('#hubFolder')) {
     const m = hub.ch.members[0];
     hubModal('📁 「' + m.name + '」負責的資料夾', '<div style="display:flex;gap:6px"><input class="note" id="fdIn" style="flex:1" placeholder="完整路徑，留空＝不指定" value="' + esc(m.folder || '') + '"><button class="btn" id="fdPick">📂 選擇…</button></div><p class="hint">更換資料夾後，「✋ 可動手」會自動關閉，需要重新開啟。助手的對話記憶不受影響。</p><button class="btn" id="fdSave">儲存</button> <span class="msg" id="fdMsg"></span>');
@@ -740,6 +749,34 @@ hubEl('hubModalBody').addEventListener('change', (e) => {
   if (hubEl('asWebRow').hidden) hubEl('asWeb').checked = false;
 });
 hubEl('hubModalBody').addEventListener('click', async (e) => {
+  for (const [btn, input, none] of [['#hubGPick', 'hubGFolder', 'hubGNone'], ['#gfPick', 'gfIn', 'gfNone']]) {
+    if (!e.target.closest(btn)) continue;
+    const b = e.target.closest(btn);
+    if (b.disabled) return;
+    b.disabled = true; b.textContent = '請看選擇視窗…';
+    const r = await post('/api/hub/pickfolder', {});
+    b.disabled = false; b.textContent = '📂 選擇…';
+    if (!r.ok) return alert(r.error);
+    if (r.folder) { hubEl(input).value = r.folder; hubEl(none).checked = false; }
+    return;
+  }
+  if (e.target.closest('#gfSave')) return hubSendFolder({ folder: hubEl('gfIn').value, noFolder: hubEl('gfNone').checked });
+  if (e.target.closest('#hubChoiceGo')) {
+    const choices = {};
+    for (const r of hubEl('hubModalBody').querySelectorAll('input[type=radio]:checked')) choices[r.name.replace(/^ch-/, '')] = r.value;
+    return hub.again(choices);
+  }
+  const pm = e.target.closest('[data-perm]');
+  if (pm) {
+    const on = pm.dataset.on !== '1';
+    const m = hub.ch.members.find((x) => x.id === pm.dataset.mid);
+    const ask = { act: `讓「${m.name}」在這個群組可以改檔和執行指令？每一次動作都會出現卡片，你按「允許」才會做。`, safe: `讓「${m.name}」的唯讀簡單指令（例如 git status）直接執行？`, auto: `讓「${m.name}」在這個群組全自動動手？資料夾裡的改檔、寫檔和一般指令不再問你（改檔前會備份）；危險指令、金鑰檔、資料夾以外的路徑還是會問。建議資料夾要有備份或 git。` }[pm.dataset.perm];
+    if (on && !confirm(ask)) return;
+    const r = await post(`/api/hub/${pm.dataset.perm}`, { id: m.id, on, channelId: hub.cur });
+    if (!r.ok) return alert(r.error);
+    await hubRefresh();
+    return hubPermModal();
+  }
   if (e.target.closest('#asPick')) {
     const btn = e.target.closest('#asPick');
     if (btn.disabled) return;
@@ -846,11 +883,60 @@ hubEl('hubModal').addEventListener('input', (e) => {
   const q = e.target.value.trim().toLowerCase();
   for (const l of rows.children) if (l.dataset.t) l.hidden = !!q && !l.dataset.t.includes(q);
 });
+// 📁 When a bound conversation already has a project folder different from the group's, the Chair chooses first:
+// replace (it follows the group's folder here) or keep (two versions). `again(choices)` re-sends the same request.
+function hubAskChoices(conflicts, again) {
+  hub.again = again;
+  const names = (t, a) => (a.length ? `<div class="hint">${t}：${a.map(esc).join("、")}</div>` : '');
+  hubModal('📁 群組的資料夾和成員自己的專案不同', `<div class="hint">下面這些成員自己的對話已經有專案資料夾。請決定在這個群組裡怎麼處理，避免做出兩個不同版本。</div>${conflicts.map((x) => `<div class="card"><b>${esc(x.name)}</b>
+    <div class="hint">它自己的資料夾：${esc(x.cwd)}</div>
+    <div class="hint">兩邊比較：相同 ${x.diff.same} 個；只在群組資料夾 ${x.diff.onlyGroup} 個；只在它的資料夾 ${x.diff.onlyMember} 個；內容不同 ${x.diff.differ} 個</div>
+    ${names('只在群組資料夾', x.diff.sample.onlyGroup)}${names('只在它的資料夾', x.diff.sample.onlyMember)}${names('內容不同', x.diff.sample.differ)}
+    <label style="display:block;margin-top:6px"><input type="radio" name="ch-${esc(x.memberId)}" value="replace" checked> <b>以群組資料夾為準（取代）</b>：在這個群組裡，它讀的和改的都是群組資料夾，只有一個版本。</label>
+    <label style="display:block"><input type="radio" name="ch-${esc(x.memberId)}" value="keep"> <b>保留它自己的資料夾</b>：兩個資料夾各自演變，之後可能出現不同版本，要自己整合。</label></div>`).join('')}
+    <div class="hint">目前不會自動合併兩個資料夾的檔案，上面的比較是讓你看差多少。</div>
+    <div class="row"><span class="msg" id="hubGMsg"></span><button class="primary" id="hubChoiceGo">確定</button></div>`);
+}
+async function hubSendGroup(draft, choices) {
+  const r = await post('/api/hub/group', { ...draft, choices });
+  if (r.conflicts) return hubAskChoices(r.conflicts, (ch) => hubSendGroup(draft, ch));
+  if (!r.ok) { hubEl('hubGMsg').textContent = r.error; return; }
+  hubEl('hubModal').hidden = true;
+  hubOpen(r.channel.id);
+}
+async function hubSendMembers(members, choices) {
+  const r = await post('/api/hub/members', { channelId: hub.cur, members, choices });
+  if (r.conflicts) return hubAskChoices(r.conflicts, (ch) => hubSendMembers(members, ch));
+  if (!r.ok) { hubEl('hubGMsg').textContent = r.error; return; }
+  hubEl('hubModal').hidden = true;
+  hub.jump = true;
+  hubRefresh();
+}
+async function hubSendFolder(draft, choices) {
+  const r = await post('/api/hub/group/folder', { channelId: hub.cur, ...draft, choices });
+  if (r.conflicts) return hubAskChoices(r.conflicts, (ch) => hubSendFolder(draft, ch));
+  if (!r.ok) { hubEl('hubGMsg').textContent = r.error; return; }
+  hubEl('hubModal').hidden = true;
+  hubRefresh();
+}
+// ✋ Permissions of this group's Claude members (they belong to the group, not to the member).
+function hubPermModal() {
+  const c = hub.ch;
+  const perm = c.perm || {};
+  const rows = c.members.filter(canAct).map((m) => {
+    const p = perm[m.id] || {};
+    const b = (k, label, on) => `<button class="btn" data-perm="${k}" data-mid="${esc(m.id)}" data-on="${on ? 1 : 0}">${label}：${on ? '開' : '關'}</button>`;
+    return `<div class="card"><b>${esc(m.name)}</b><div style="margin-top:6px">${b('act', '✋ 可動手', p.act)} ${p.act ? `${b('safe', '🛡 安全指令放行', p.safe)} ${b('auto', '⚡ 全自動', p.auto)}` : ''}</div></div>`;
+  }).join('');
+  hubModal(`✋ 「${c.name}」的權限`, `<div class="hint">${c.folder ? `這個群組的資料夾：${esc(c.folder)}。` : '這個群組沒有指定資料夾，沒有地方可以動手。'}這裡開的權限只在這個群組有效，換到別的群組要另外開。</div>${rows || '<div class="none">這個群組裡沒有 Claude 成員。</div>'}<div class="hint">🛡 只看不改的簡單指令直接執行；⚡ 資料夾裡的改檔、寫檔和一般指令直接做。危險指令、金鑰檔、資料夾以外的路徑，一律還是會問你。</div><span class="msg" id="hubGMsg"></span>`);
+}
 hubEl('hubNewGroup').addEventListener('click', async () => {
   if (!hub.view) hub.view = await hubGet('/api/hub');
   hubModal('＋ 新建群組', `<div class="hub-list" style="max-height:none">
       <input class="note" id="hubGName" maxlength="40" placeholder="群組名稱，例：足球分析行銷群" style="width:100%">
       ${hubPickList(new Set())}
+      <div style="display:flex;gap:6px;margin-top:8px"><input class="note" id="hubGFolder" placeholder="這個群組的專案資料夾（完整路徑）" style="flex:1"><button class="btn" id="hubGPick" title="開啟選擇資料夾視窗">📂 選擇…</button></div>
+      <label style="display:block;margin:6px 0"><input type="checkbox" id="hubGNone" class="nopick"> 這個群組不需要資料夾</label>
       <label><select id="hubGMode" class="btn"><option value="mention">＠ 點名模式（預設）：@ 誰誰才發言</option><option value="auto">🔁 自主協商：大家輪流發言，最多 3 輪</option></select></label>
     </div>
     ${hub.view.members.length < 2 ? '<div class="none">成員至少要兩位：先「📥 綁定對話」。</div>' : ''}
@@ -866,21 +952,12 @@ hubEl('hubModal').addEventListener('click', async (e) => {
     return;
   }
   if (e.target.closest('#hubMSave')) {
-    const members = [...hubEl('hubModalBody').querySelectorAll('input[type=checkbox]:checked')].map((x) => x.value);
-    const r = await post('/api/hub/members', { channelId: hub.cur, members });
-    if (!r.ok) { hubEl('hubGMsg').textContent = r.error; return; }
-    hubEl('hubModal').hidden = true;
-    hub.jump = true;
-    hubRefresh();
-    return;
+    const members = [...hubEl('hubModalBody').querySelectorAll('input[type=checkbox]:checked:not(.nopick)')].map((x) => x.value);
+    return hubSendMembers(members, undefined);
   }
   if (e.target.closest('#hubGCreate')) {
-    const members = [...hubEl('hubModalBody').querySelectorAll('input[type=checkbox]:checked')].map((x) => x.value);
-    const r = await post('/api/hub/group', { name: hubEl('hubGName').value, members, mode: hubEl('hubGMode').value });
-    if (!r.ok) { hubEl('hubGMsg').textContent = r.error; return; }
-    hubEl('hubModal').hidden = true;
-    hubOpen(r.channel.id);
-    return;
+    const members = [...hubEl('hubModalBody').querySelectorAll('input[type=checkbox]:checked:not(.nopick)')].map((x) => x.value);
+    return hubSendGroup({ name: hubEl('hubGName').value, members, mode: hubEl('hubGMode').value, folder: hubEl('hubGFolder').value, noFolder: hubEl('hubGNone').checked });
   }
   const go = e.target.closest('#hubImpGo');
   if (go) {

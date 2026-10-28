@@ -267,7 +267,7 @@ function createLite({ dataDir, port = 8300, password, call, limits, probe, conne
       if (out && out[STATUS]) json(res, out[STATUS], out.body);
       else json(res, 200, out);
     } catch (e) {
-      json(res, e.status || 400, { ok: false, error: e.message });
+      json(res, e.status || 400, { ok: false, error: e.message, ...(e.data || {}) });
     }
   });
   // A quiet heartbeat keeps the event stream from being cut by idle timeouts.

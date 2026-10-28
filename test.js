@@ -697,6 +697,88 @@ const path = require('path');
       console.log('✓ 🔄 rotation: grown/long/cold conversations restart from the original with a summary; steady or big-from-the-start ones do not');
     }
 
+    // 📁 Group folders: the folder follows the group, permissions are per group, bound conversations are asked first.
+    {
+      const { Hub } = require('./lib/hub');
+      const A = path.join(tmp, 'gf-projA');
+      const B = path.join(tmp, 'gf-projB');
+      fs.mkdirSync(A, { recursive: true });
+      fs.mkdirSync(B, { recursive: true });
+      fs.writeFileSync(path.join(A, 'a.txt'), '甲專案');
+      fs.writeFileSync(path.join(B, 'b.txt'), '乙專案');
+      fs.writeFileSync(path.join(B, '.env'), 'KEY=1');
+      const projects = path.join(tmp, 'gf-projects');
+      process.env.STUDIO_CLAUDE_PROJECTS = projects;
+      fs.mkdirSync(path.join(projects, 'C--gf'), { recursive: true });
+      const sid = '33333333-4444-5555-6666-777777777777';
+      fs.writeFileSync(path.join(projects, 'C--gf', `${sid}.jsonl`), [{ type: 'user', cwd: A, message: { content: '甲的舊對話' } }, { type: 'custom-title', customTitle: '甲的舊對話' }].map((j) => JSON.stringify(j)).join('\n') + '\n');
+      const seen = [];
+      const hub = new Hub({ dataDir: path.join(tmp, 'gfdata'), act: { url: 'http://127.0.0.1:1', token: 'T0KEN' }, call: {
+        claude: async (a) => { seen.push(a); return { text: '好', sessionId: a.fork ? 'ffffffff-1111-2222-3333-444444444444' : a.resume || 'eeeeeeee-1111-2222-3333-444444444444', input: 1000, output: 5 }; },
+        gemini: async () => ({ text: 'x' }),
+      } });
+      const own = hub.addAssistant({ name: '自有', role: 'x', folder: A });
+      const other = hub.addAssistant({ name: '另一位', role: 'x' });
+      assert.throws(() => hub.createGroup({ name: '沒資料夾', members: [own.id, other.id] }), /請指定這個群組的專案資料夾/, 'a group with a Claude assistant needs a folder (or an explicit "none")');
+      assert.throws(() => hub.createGroup({ name: '亂指', members: [own.id, other.id], folder: path.join(tmp, 'gf-nope') }), /找不到這個資料夾/);
+      const ga = hub.createGroup({ name: '甲群', members: [own.id, other.id], folder: A });
+      const gb = hub.createGroup({ name: '乙群', members: [own.id, other.id], folder: B });
+      const dm = hub.dm(own.id);
+      assert.strictEqual(hub.rootOf(own, gb), path.resolve(B), "the group's folder wins");
+      assert.strictEqual(hub.rootOf(own, dm), path.resolve(A), "a 1 對 1 still uses the assistant's own folder");
+      const files = (dir) => fs.readdirSync(dir).sort();
+      await hub.post(gb.id, '@自有 看一下').done;
+      assert.deepStrictEqual(files(seen[seen.length - 1].cwd), ['b.txt'], 'in 乙群 it sees 乙 only (and no .env)');
+      await hub.post(dm.id, '你好').done;
+      assert.deepStrictEqual(files(seen[seen.length - 1].cwd), ['a.txt'], 'in the 1 對 1 it sees its own folder again');
+      // Permissions belong to the group.
+      hub.setAct(own.id, true, ga.id);
+      assert.ok(ga.perm[own.id].act && !hub.perm(own, gb).act && !own.act, 'allowed in 甲群 only');
+      await hub.post(ga.id, '@自有 動手').done;
+      assert.ok(seen[seen.length - 1].act && seen[seen.length - 1].act.channelId === ga.id);
+      await hub.post(gb.id, '@自有 動手').done;
+      assert.ok(!seen[seen.length - 1].act, '乙群 has no hands');
+      assert.throws(() => hub.setAct(own.id, true, 'g-none'), /找不到/);
+      // Changing the group's folder takes the permissions back.
+      hub.setAuto(own.id, true, ga.id);
+      hub.setGroupFolder(ga.id, B);
+      assert.strictEqual(ga.folder, path.resolve(B));
+      assert.ok(!ga.perm[own.id].act && !ga.perm[own.id].auto, 'new folder → hands and auto off');
+      assert.throws(() => hub.setGroupFolder(ga.id, ''), /請指定資料夾/);
+      assert.throws(() => hub.setGroupFolder(hub.dm(own.id).id, B), /只有群組/);
+      // "No folder" is strict: the assistant's own folder does not leak into that group.
+      const gn = hub.createGroup({ name: '不用資料夾', members: [own.id, other.id], noFolder: true });
+      assert.strictEqual(hub.rootOf(own, gn), '');
+      await hub.post(gn.id, '@自有 聊聊').done;
+      assert.deepStrictEqual(files(seen[seen.length - 1].cwd), [], 'nothing of its own project in a no-folder group');
+      // A bound conversation with a project of its own: asked first, and the difference is shown.
+      const bm = hub.bind(sid);
+      let ask409;
+      try { hub.createGroup({ name: '丙群', members: [bm.id, other.id], folder: B }); } catch (e) { ask409 = e; }
+      assert.ok(ask409 && ask409.status === 409 && ask409.data.conflicts.length === 1, 'it must be asked');
+      const diff = ask409.data.conflicts[0].diff;
+      assert.ok(diff.onlyGroup === 1 && diff.onlyMember === 1 && diff.differ === 0 && diff.sample.onlyGroup[0] === 'b.txt', 'the two folders compared (secret files left out)');
+      assert.strictEqual(hub.channels.filter((x) => x.name === '丙群').length, 0, 'nothing was created before it was settled');
+      const gr = hub.createGroup({ name: '丙群', members: [bm.id, other.id], folder: B, choices: { [bm.id]: 'replace' } });
+      assert.strictEqual(hub.rootOf(bm, gr), path.resolve(B));
+      await hub.post(gr.id, `@${bm.name} 看一下`).done;
+      const fol = seen[seen.length - 1];
+      assert.strictEqual(fol.cwd, A, 'its conversation still runs where it began (that is how it is resumed)');
+      assert.ok(/請以它為準/.test(fol.prompt) && fol.addDirs.some((d) => fs.existsSync(path.join(d, 'b.txt')) && !fs.existsSync(path.join(d, '.env'))), "the group's folder is mounted as a filtered copy");
+      const gk = hub.createGroup({ name: '丁群', members: [bm.id, other.id], folder: B, choices: { [bm.id]: 'keep' } });
+      assert.strictEqual(hub.rootOf(bm, gk), A, 'keep = it stays on its own folder');
+      assert.ok(/可能出現不同版本/.test(gk.messages.map((x) => x.text).join('\n')) || gk.bound[bm.id] === 'keep');
+      // Adding such a member later asks too.
+      assert.throws(() => hub.setMembers(gb.id, [own.id, other.id, bm.id]), (e) => e.status === 409);
+      hub.setMembers(gb.id, [own.id, other.id, bm.id], { [bm.id]: 'replace' });
+      assert.strictEqual(gb.bound[bm.id], 'replace');
+      // Nothing to ask when the folders are the same.
+      const same = hub.createGroup({ name: '同一個', members: [bm.id, other.id], folder: A });
+      assert.deepStrictEqual(same.bound, {});
+      delete process.env.STUDIO_CLAUDE_PROJECTS;
+      console.log('✓ 📁 group folders: the group\'s folder wins, permissions per group, "none" is strict, bound conversations are asked (with a comparison) before replace/keep');
+    }
+
     // 📬 Catch-up cap: a Claude member that missed a lot gets the summary + the last 12, not everything.
     {
       const { Hub } = require('./lib/hub');
@@ -707,7 +789,7 @@ const path = require('path');
       } });
       const a = hub.addAssistant({ name: '勤勞', role: '測試' });
       const b = hub.addAssistant({ name: '久未發言', role: '測試' });
-      const g = hub.createGroup({ name: '補讀群', members: [a.id, b.id] });
+      const g = hub.createGroup({ name: '補讀群', members: [a.id, b.id], noFolder: true });
       for (let i = 1; i <= 10; i++) await hub.post(g.id, `@勤勞 第 ${i} 句`).done; // 10 chair lines + 10 replies missed by 久未發言
       assert.ok(hub.needsCatchup(g, b) && !hub.needsCatchup(g, a));
       await hub.post(g.id, '@久未發言 你怎麼看').done;
@@ -722,7 +804,7 @@ const path = require('path');
       const quiet = new Hub({ dataDir: path.join(tmp, 'catchdata2'), call: hub.call });
       const q1 = quiet.addAssistant({ name: '甲', role: 'x' });
       const q2 = quiet.addAssistant({ name: '乙', role: 'x' });
-      const qg = quiet.createGroup({ name: '少話群', members: [q1.id, q2.id] });
+      const qg = quiet.createGroup({ name: '少話群', members: [q1.id, q2.id], noFolder: true });
       for (let i = 1; i <= 3; i++) await quiet.post(qg.id, `@甲 第 ${i} 句`).done;
       assert.ok(!quiet.needsCatchup(qg, q2));
       process.env.STUDIO_CATCHUP = '0';
