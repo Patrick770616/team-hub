@@ -1,0 +1,919 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>團隊中樞</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>">
+<style>
+  :root {
+    --bg: #f6f6f3;
+    --panel: #ffffff;
+    --ink: #1c1c1a;
+    --muted: #6d6d68;
+    --faint: #a3a39d;
+    --line: #e4e3dd;
+    --thinking: #7c5cdb;
+    --tool: #2f7dd1;
+    --typing: #1f9d6b;
+    --waiting: #d98a0b;
+    --done: #5b8a4a;
+    --error: #d1453b;
+    --idle: #a3a39d;
+    --claude: #c96442;
+    --codex: #10a37f;
+    --gemini: #4f7cf0;
+    --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141413;
+      --panel: #1e1e1c;
+      --ink: #ecebe6;
+      --muted: #a09f99;
+      --faint: #6b6a65;
+      --line: #2e2d2a;
+      --thinking: #a48bf0;
+      --tool: #5ea4ee;
+      --typing: #3fc48f;
+      --waiting: #f0a93a;
+      --done: #86b872;
+      --error: #f0675d;
+      --idle: #6b6a65;
+      --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); }
+  body {
+    font: 14px/1.45 ui-sans-serif, -apple-system, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif;
+    padding: 12px 14px;
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); font-size: 12.5px; color: var(--muted); }
+  .chip b { color: var(--ink); font-weight: 600; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
+  .seg button { border: 0; background: none; color: var(--muted); padding: 5px 11px; font: inherit; font-size: 12.5px; cursor: pointer; }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button.on { background: var(--ink); color: var(--bg); }
+  .seg button small { opacity: .65; font-size: 11px; }
+  .btn { border: 1px solid var(--line); background: var(--panel); color: var(--muted); padding: 5px 11px; border-radius: 8px; font: inherit; font-size: 12.5px; cursor: pointer; }
+  .btn:hover { color: var(--ink); }
+  .primary, .danger { border: 0; border-radius: 8px; padding: 7px 14px; font: inherit; font-weight: 600; cursor: pointer; color: #fff; }
+  .primary { background: var(--typing); }
+  .danger { background: var(--error); }
+  .primary:disabled, .danger:disabled { opacity: .45; cursor: not-allowed; }
+  .none { color: var(--faint); font-size: 13px; }
+  .modal { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 16px; }
+  .modal[hidden] { display: none; }
+  .modal-box { background: var(--panel); color: var(--ink); border-radius: 14px; padding: 16px; width: min(560px, 100%); max-height: 88vh; overflow: auto; box-shadow: 0 20px 60px rgba(0,0,0,.35); border-top: 5px solid #ff3b30; }
+  .modal-head { display: flex; align-items: center; gap: 8px; justify-content: space-between; font-size: 15px; }
+  .modal .dispute { margin-top: 10px; background: color-mix(in srgb, #e09412 18%, var(--panel)); border: 1px solid #e09412; border-radius: 8px; padding: 6px 10px; font-weight: 700; }
+  .modal .ap-sum { white-space: pre-wrap; word-break: break-word; background: var(--bg); border-radius: 8px; padding: 10px 12px; font: 13.5px/1.55 ui-sans-serif, -apple-system, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif; margin: 8px 0; }
+  .modal .row { display: flex; gap: 8px; align-items: center; justify-content: flex-end; margin-top: 10px; flex-wrap: wrap; }
+  .modal .row[hidden] { display: none; }
+  .modal .confirm { background: color-mix(in srgb, var(--waiting) 14%, var(--panel)); border-radius: 8px; padding: 8px 10px; }
+  .modal .confirm .msg { flex: 1; font-weight: 600; }
+  .modal input.note { width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); font: inherit; padding: 8px 10px; }
+  .chat { display: flex; flex-direction: column; gap: 8px; max-height: 340px; overflow-y: auto; padding: 8px; border-radius: 8px; background: color-mix(in srgb, #8cabd9 22%, var(--bg)); }
+  .chat .cm { display: flex; gap: 7px; align-items: flex-start; max-width: 88%; }
+  .chat .cm .av { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-size: 13px; font-weight: 700; }
+  .chat .cm .nm { font-size: 11.5px; color: var(--muted); margin-bottom: 2px; }
+  .chat .cm .bb { background: var(--panel); color: var(--ink); border-radius: 4px 14px 14px 14px; padding: 6px 10px; font-size: 13.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; cursor: pointer; box-shadow: 0 1px 1px rgba(0,0,0,.08); }
+  .chat .cm .bb .more { color: var(--muted); font-size: 11.5px; margin-left: 4px; }
+  .chat .cm .tm { align-self: flex-end; font-size: 10.5px; color: var(--muted); flex: none; }
+  .chat .cm.me { align-self: flex-end; flex-direction: row-reverse; }
+  .chat .cm.me .bb { background: #8de055; color: #12210a; border-radius: 14px 4px 14px 14px; }
+  .chat .cm.ask .bb { border-left: 3px solid #e09412; }
+  .chat .sys { align-self: center; font-size: 11.5px; color: var(--muted); background: color-mix(in srgb, var(--panel) 70%, transparent); border-radius: 999px; padding: 2px 10px; text-align: center; max-width: 92%; }
+  .chat .cm .bb.typing { color: var(--muted); cursor: default; }
+  .chat .cm .bb.typing i { display: inline-block; animation: blink 1.2s infinite; font-style: normal; }
+  .chat .cm .bb.typing i:nth-child(2) { animation-delay: .2s; } .chat .cm .bb.typing i:nth-child(3) { animation-delay: .4s; }
+  .chat .cm.err .bb { background: #fde8e6; color: #8a1f17; }
+  @keyframes blink { 0%, 80%, 100% { opacity: .2; } 40% { opacity: 1; } }
+  /* 💬 Team Chat Hub */
+  .hub { flex: 1; min-height: 0; display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 12px; }
+  .hub[hidden] { display: none; }
+  .hub-side, .hub-main { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; min-height: 0; }
+  .hub-side { display: flex; flex-direction: column; overflow-y: auto; padding: 10px; gap: 4px; }
+  .hub-side .acts { display: flex; gap: 6px; margin-bottom: 6px; }
+  .hub-side .acts .btn { flex: 1; padding: 6px 4px; }
+  .hub-side h4 { margin: 10px 4px 4px; font-size: 11.5px; color: var(--muted); letter-spacing: .06em; }
+  .hub-item { display: flex; gap: 8px; align-items: center; padding: 7px 8px; border-radius: 8px; cursor: pointer; min-width: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; width: 100%; }
+  .hub-item:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+  .hub-item.on { background: color-mix(in srgb, var(--typing) 16%, transparent); }
+  .hub-item .tx { min-width: 0; flex: 1; }
+  .hub-item .tx b { display: block; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hub-item .tx small { display: block; color: var(--muted); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hav { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-size: 13px; font-weight: 700; background: var(--claude); }
+  .hav.web { background: #7b5cd6; }
+  .hub-side .acts { flex-wrap: wrap; }
+  .hub-side .acts .wide { flex-basis: 100%; }
+  .hub-import textarea, .hub-import input.note { width: 100%; box-sizing: border-box; }
+  .hub-import textarea { min-height: 110px; border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; font: inherit; background: var(--bg); color: var(--ink); }
+  .hub-import ol { margin: 6px 0; padding-left: 20px; font-size: 12.5px; color: var(--muted); }
+  .hav.gemini { background: var(--gemini); } .hav.group { background: #5b8a4a; } .hav.chair { background: #8de055; color: #12210a; }
+  .hub-main { display: flex; flex-direction: column; min-width: 0; }
+  .hub-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  .hub-head b { font-size: 15px; }
+  .hub-head .mem { color: var(--muted); font-size: 12px; flex: 1; min-width: 120px; }
+  .hub .chat { max-height: none; flex: 1; border-radius: 0; }
+  .hub .chat .cm { max-width: 82%; }
+  .hub .chat .cm .bb { cursor: text; white-space: normal; }
+  .hub .chat .cm .bb pre { background: color-mix(in srgb, var(--ink) 8%, transparent); padding: 6px 8px; border-radius: 6px; overflow-x: auto; white-space: pre; font-size: 12px; margin: 4px 0; }
+  .hub .chat .cm .bb code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: color-mix(in srgb, var(--ink) 8%, transparent); padding: 0 3px; border-radius: 3px; }
+  .hub .chat .cm .bb pre code { background: none; padding: 0; }
+  .hub .chat .cm .bb .h { font-weight: 700; display: block; margin-top: 4px; }
+  .hub .chat .at { color: #2f7dd1; font-weight: 600; }
+  .hub .chat .cm.me .at { color: #1d4f10; }
+  .hub .chat .ok { font-size: 10.5px; color: var(--done); margin-top: 2px; }
+  .hub .chat .warn { font-size: 10.5px; color: var(--waiting); margin-top: 2px; }
+  .hub .chat .sys .hot { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+  .hub .chat .sys pre { text-align: left; white-space: pre-wrap; font: inherit; margin: 6px 0 0; }
+  .hub .chat .sys { max-width: 86%; border-radius: 12px; }
+  .hub .chat .card { align-self: stretch; margin: 4px 8px; border: 1px solid var(--line); border-left: 4px solid #d99a1b; border-radius: 10px; background: var(--panel); padding: 10px 12px; font-size: 13px; }
+  .hub .chat .card.hot { border-left-color: #d6453d; }
+  .hub .chat .card.allowed { border-left-color: #2a9d6a; }
+  .hub .chat .card.denied, .hub .chat .card.auto-denied, .hub .chat .card.expired { opacity: .75; }
+  .card .cardhead { font-weight: 600; display: flex; gap: 8px; justify-content: space-between; flex-wrap: wrap; }
+  .card .cardst { font-weight: 500; color: var(--muted); font-size: 12px; }
+  .card .cardwhat { margin: 8px 0 4px; }
+  .card pre { margin: 0; white-space: pre-wrap; word-break: break-all; font: 12.5px/1.5 ui-monospace, Consolas, monospace; max-height: 240px; overflow: auto; }
+  .card .diff { border-radius: 8px; padding: 6px 8px; margin: 4px 0; }
+  .card .diff span { font-size: 11px; color: var(--muted); display: block; }
+  .card .diff.del { background: color-mix(in srgb, #d6453d 12%, transparent); }
+  .card .diff.add { background: color-mix(in srgb, #2a9d6a 14%, transparent); }
+  .card .cmd { background: var(--bg); border-radius: 8px; padding: 8px 10px; }
+  .card .cardwhy { margin-top: 6px; padding: 6px 8px; background: rgba(120,160,255,.12); border-radius: 6px; }
+  .card .cardrisk { margin-top: 6px; color: #d6453d; font-weight: 600; }
+  .card .cardres, .card .cardnote { margin-top: 6px; color: var(--muted); font-size: 12px; white-space: pre-wrap; }
+  .card .cardacts { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+  .card .cardok { font-size: 12.5px; flex-basis: 100%; }
+  .hub-input { border-top: 1px solid var(--line); padding: 8px 10px; display: flex; gap: 6px; align-items: flex-end; position: relative; flex-wrap: wrap; }
+  .hub-input textarea { flex: 1; min-width: 180px; resize: vertical; border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; font: inherit; background: var(--bg); color: var(--ink); }
+  .hub-at { position: absolute; bottom: 100%; left: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); padding: 4px; display: flex; flex-direction: column; min-width: 200px; z-index: 5; }
+  .hub-at[hidden] { display: none; }
+  .hub-at button { border: 0; background: none; text-align: left; padding: 6px 8px; border-radius: 6px; font: inherit; color: inherit; cursor: pointer; }
+  .hub-at button:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+  .hub-files { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .hub-files[hidden] { display: none; }
+  .fchip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; font-size: 12px; background: var(--panel); color: var(--ink); text-decoration: none; max-width: 100%; }
+  .fchip button { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 2px; font: inherit; }
+  .fnote { font-size: 11.5px; color: var(--waiting); }
+  .hub .chat .files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .hub .chat .thumb { max-width: 240px; max-height: 180px; border-radius: 8px; display: block; border: 1px solid var(--line); }
+  .hub-main.drop { outline: 2px dashed var(--typing); outline-offset: -6px; }
+  .hub-sec > summary { list-style: none; cursor: pointer; user-select: none; margin: 10px 4px 4px; font-size: 11.5px; color: var(--muted); letter-spacing: .06em; font-weight: 600; display: flex; gap: 6px; align-items: center; }
+  .hub-sec > summary::-webkit-details-marker { display: none; }
+  .hub-sec > summary::before { content: "▸"; display: inline-block; transition: transform .15s; }
+  .hub-sec[open] > summary::before { transform: rotate(90deg); }
+  .hub-sec > summary .n { color: var(--faint); font-weight: 500; }
+  .usage { margin: 0 4px 8px; font-size: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .usage .u-row { display: flex; flex-direction: column; gap: 3px; }
+  .usage .u-top { display: flex; justify-content: space-between; gap: 6px; }
+  .usage .u-top b { font-weight: 600; }
+  .usage .u-top span, .usage .u-note { color: var(--muted); font-size: 11.5px; }
+  .usage .u-bar { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; }
+  .usage .u-bar i { display: block; height: 100%; background: #2a9d6a; border-radius: 999px; }
+  .usage .u-bar.warn i { background: #d99a1b; }
+  .usage .u-bar.full i { background: #d6453d; }
+  table.ledger { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.ledger th, table.ledger td { text-align: right; padding: 3px 6px; border-bottom: 1px solid var(--line); }
+  table.ledger th:first-child, table.ledger td:first-child { text-align: left; word-break: break-all; }
+  .usage .u-btn { align-self: flex-start; font-size: 11.5px; padding: 2px 8px; }
+  .hub-sec > summary .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--error); }
+  .hub-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--error); flex: none; }
+  .hub-badge { flex: none; font-size: 11px; background: var(--waiting); color: #fff; border-radius: 999px; padding: 0 6px; }
+  .hub-empty { margin: auto; color: var(--muted); text-align: center; padding: 30px; line-height: 1.8; }
+  .hub-list { display: flex; flex-direction: column; gap: 4px; max-height: 55vh; overflow-y: auto; margin: 8px 0; }
+  .hub-list label, .hub-list .row { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
+  .hub-list .row .tx { flex: 1; min-width: 0; }
+  .hub-list .row .tx small { display: block; color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  @media (max-width: 760px) { .hub { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); } .hub-side { max-height: 32vh; } }
+  /* The standalone hub's own bits */
+  .wrap { height: calc(100vh - 24px); display: flex; flex-direction: column; }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 10px; flex: none; }
+  h1 { font-size: 20px; margin: 0; letter-spacing: -.01em; }
+  .controls { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .chip.full { color: var(--error); border-color: var(--error); }
+  .login { margin: 12vh auto 0; width: min(380px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 22px; box-shadow: var(--shadow); }
+  .login[hidden], .wrap[hidden], .hub-input[hidden] { display: none !important; }
+  .modal [hidden] { display: none !important; } /* a hidden row stays hidden even where a style sets display */
+  .modal .asrow { display: block; margin-top: 8px; }
+  .login h1 { margin-bottom: 8px; }
+  .login p { color: var(--muted); font-size: 13px; line-height: 1.7; margin: 6px 0 14px; }
+  .login input { width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); font: 18px ui-monospace, Consolas, monospace; letter-spacing: .12em; padding: 9px 12px; text-transform: uppercase; }
+  .login .row { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+  .login .msg { flex: 1; font-size: 12.5px; color: var(--error); }
+  .set-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; font-size: 13px; }
+  .set-row input[type=number] { width: 12em; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); font: inherit; padding: 6px 9px; }
+  .hint { font-size: 12.5px; color: var(--muted); margin-top: 8px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<form class="login" id="login" hidden>
+  <h1>💬 團隊中樞</h1>
+  <p>請輸入這次的密碼。密碼在「團隊中樞」的啟動視窗（黑色視窗）裡，每次啟動都會換一組。登入後這個瀏覽器 7 天內不用再輸入。</p>
+  <input id="loginPw" autocomplete="off" spellcheck="false" placeholder="XXXX-XXXX" maxlength="12" autofocus>
+  <div class="row"><span class="msg" id="loginMsg"></span><button class="primary" id="loginGo">進入</button></div>
+</form>
+
+<div class="wrap" id="app" hidden>
+  <header>
+    <h1>💬 團隊中樞</h1>
+    <span class="chip" id="tok" title="今天所有回覆用掉的 Token（輸入加輸出），每天自動歸零"></span>
+    <div class="controls">
+      <button class="btn" id="liteSet">⚙️ 設定</button>
+      <button class="btn" id="liteOut" title="這個瀏覽器登出，下次要重新輸入密碼">登出</button>
+    </div>
+  </header>
+  <section class="hub" id="hub">
+    <aside class="hub-side">
+      <div class="acts"><button class="btn" id="hubNewGroup">＋ 新建群組</button><button class="btn" id="hubBind" title="把這台電腦上的 Claude Code 對話拉進來，當成一位成員">📥 綁定對話</button><button class="btn" id="hubAssistant" title="全新的 Claude 助手：指定角色和負責的資料夾">🤖 新增助手</button><button class="btn" id="hubAddAi" title="本機 Ollama、OpenAI 相容服務、Antigravity">🔌 加入其他 AI</button><button class="btn wide" id="hubImport"title="claude.ai、ChatGPT、Gemini 網頁版的對話：匯入後整理成摘要，當成一位成員">📚 匯入網頁版對話</button></div>
+      <details class="hub-sec" data-sec="groups" open><summary>👥 群組 <span class="n" id="hubGroupsN"></span></summary><div id="hubGroups"></div></details>
+      <details class="hub-sec" data-sec="dms" open><summary>💬 私聊 <span class="n" id="hubDmsN"></span></summary><div id="hubDms"></div></details>
+      <details class="hub-sec" data-sec="usage" open><summary>📊 AI 用量</summary><div id="hubUsage" class="usage"></div></details>
+    </aside>
+    <div class="hub-main">
+      <div class="hub-head" id="hubHead"></div>
+      <div class="chat" id="hubChat"><div class="hub-empty">👈 從左邊選一個群組或私聊。<br>先按「📥 綁定對話」把這台電腦上的 Claude Code 對話拉進來，<br>再按「＋ 新建群組」讓大家一起討論。</div></div>
+      <div class="hub-input" id="hubInput" hidden>
+        <div class="hub-at" id="hubAt" hidden></div>
+        <div class="hub-files" id="hubFiles" hidden></div>
+        <input type="file" id="hubFileIn" multiple hidden accept="image/*,.pdf,.txt,.md,.json,.csv,.log,.xml,.yml,.yaml,.html,.css,.js,.ts,.py,.java,.kt,.go,.dart,.sql">
+        <button class="btn" id="hubAttach" title="附加圖片或檔案（也可以直接貼上截圖，或把檔案拖進聊天室）">📎</button>
+        <textarea id="hubText" rows="2" maxlength="8000" placeholder="輸入訊息，Enter 送出、Shift+Enter 換行；群組裡打 @ 點名"></textarea>
+        <button class="btn" id="hubAtBtn" title="點名成員">＠</button>
+        <button class="primary" id="hubSend">送出</button>
+        <button class="btn" id="hubMemo" title="由 Gemini 總結，寫進每位 Claude 成員的專案記憶資料夾">💾 總結並寫入記憶</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="modal" id="hubModal" hidden>
+  <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="hubModalTitle" style="border-top-color: var(--typing)">
+    <div class="modal-head"><b id="hubModalTitle"></b><button class="btn" id="hubModalClose">關閉</button></div>
+    <div id="hubModalBody"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const store = (() => {
+  const get = (k, d) => { try { const v = localStorage.getItem('lite.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } };
+  const set = (k, v) => { try { localStorage.setItem('lite.' + k, JSON.stringify(v)); } catch {} };
+  return { get, set };
+})();
+const hubEl = (id) => document.getElementById(id);
+// Every call: signed out (the password changed, or 7 days passed) → back to the password screen.
+const signedOut = (r) => { if (r.status === 401) showLogin(); return r; };
+const hubGet = (url) => fetch(url).then(signedOut).then((r) => r.json());
+function post(url, body) {
+  return fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-studio-hq': 'ceo' }, body: JSON.stringify(body || {}) })
+    .then(signedOut)
+    .then((r) => r.json().then((j) => ({ ...j, ok: r.ok && j.ok !== false }), () => ({ ok: false, error: r.status === 404 ? '團隊中樞程式還是舊版，沒有這個功能：請關掉黑色視窗，重新雙擊「啟動團隊中樞.bat」' : `伺服器回應不正確（${r.status}）` })))
+    .catch((e) => ({ ok: false, error: String(e) }));
+}
+
+// ------------------------------------------------------------ 🔑 signing in
+let started = false;
+let es = null;
+function showLogin() {
+  if (es) { es.close(); es = null; }
+  started = false;
+  hubEl('app').hidden = true;
+  hubEl('login').hidden = false;
+  hubEl('loginPw').focus();
+}
+hubEl('login').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  hubEl('loginMsg').textContent = '';
+  const r = await post('/api/login', { password: hubEl('loginPw').value });
+  if (!r.ok) { hubEl('loginMsg').textContent = r.error || '登入失敗'; return; }
+  hubEl('loginPw').value = '';
+  start();
+});
+hubEl('liteOut').addEventListener('click', async () => { await post('/api/logout'); showLogin(); });
+async function boot() {
+  // The window that started the hub opens this page with a one-time link (#once=…).
+  const once = (/[#&]once=([\w-]+)/.exec(location.hash) || [])[1];
+  if (once) {
+    history.replaceState(null, '', location.pathname);
+    const r = await post('/api/login', { once });
+    if (!r.ok) { showLogin(); hubEl('loginMsg').textContent = r.error; return; }
+  }
+  const me = await fetch('/api/me').then((r) => r.json()).catch(() => ({}));
+  if (me.signedIn) start(); else showLogin();
+}
+function start() {
+  if (started) return;
+  started = true;
+  hubEl('login').hidden = true;
+  hubEl('app').hidden = false;
+  connect();
+  hubRefresh();
+}
+// Live updates; when the hub restarts, reconnect (and ask for the password if needed).
+function connect() {
+  if (es) es.close();
+  es = new EventSource('/events');
+  es.addEventListener('hub', () => hubLater());
+  es.onerror = () => {
+    if (es.readyState !== EventSource.CLOSED) return;
+    es = null;
+    setTimeout(async () => {
+      const me = await fetch('/api/me').then((r) => r.json()).catch(() => null);
+      if (!me) return started && setTimeout(connect, 0);
+      if (me.signedIn) { connect(); hubRefresh(); } else showLogin();
+    }, 3000);
+  };
+}
+
+// ------------------------------------------------------------ 🔢 today's tokens and the settings
+async function tokens() {
+  const b = await hubGet('/api/lite/settings').catch(() => null);
+  if (!b || b.used === undefined) return null;
+  const chip = hubEl('tok');
+  chip.textContent = `🔢 今天 ${b.used.toLocaleString()}${b.capOn ? ` / ${b.cap.toLocaleString()}` : ''} tokens`;
+  chip.classList.toggle('full', b.capOn && b.used >= b.cap);
+  return b;
+}
+hubEl('liteSet').addEventListener('click', async () => {
+  const b = await tokens();
+  if (!b) return;
+  hubModal('⚙️ 設定', `<h4 style="margin:12px 0 4px">🔢 每日 Token 上限</h4>
+    <div class="hint">每位成員每次回覆用掉的 Token（輸入加輸出）都會算進今天的用量，每天半夜自動歸零。到了上限就不會再開始新的回覆，正在回的那一則會講完。Claude 對話分身每次都會讀進原本的整段對話，很長的對話一次可能就用掉十幾萬。</div>
+    <div class="set-row"><label><input type="checkbox" id="setCapOn"${b.capOn ? ' checked' : ''}> 開啟每日上限</label></div>
+    <div class="set-row">上限：<input type="number" id="setCap" min="10000" step="100000" value="${b.cap}"> tokens</div>
+    <div class="hint">今天（${esc(b.day)}）已用 ${b.used.toLocaleString()} tokens，共 ${b.calls} 次回覆。</div>
+    <div class="row"><span class="msg" id="setMsg"></span><button class="primary" id="setSave">儲存</button></div>`);
+});
+
+// ------------------------------------------------------------ 💬 the hub (same server code as the office's)
+const hub = { view: null, cur: null, ch: null, timer: null, pending: [] };
+// A little Markdown, escaped first: code blocks, `code`, **bold**, headings, @mentions.
+function hubMd(text, names = []) {
+  const blocks = [];
+  let s = esc(text).replace(/```[\w-]*\n?([\s\S]*?)```/g, (_, code) => { blocks.push(code); return `\u0000${blocks.length - 1}\u0000`; });
+  s = s.replace(/`([^`\n]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>')
+    .replace(/^#{1,4} (.+)$/gm, '<span class="h">$1</span>');
+  for (const n of ['全部', 'all', ...names].sort((a, b) => b.length - a.length)) s = s.split(`@${esc(n)}`).join(`<span class="at">@${esc(n)}</span>`);
+  s = s.replace(/\n/g, '<br>');
+  return s.replace(/\u0000(\d+)\u0000/g, (_, i) => `<pre><code>${blocks[i]}</code></pre>`);
+}
+const hubWho = (id) => (hub.view && hub.view.members.find((m) => m.id === id)) || { id, name: id, kind: 'claude' };
+const BRAIN_NAME = { claude: 'Claude', gemini: 'Gemini', ollama: 'Ollama', openai: 'OpenAI 相容', antigravity: 'Antigravity' };
+const MODEL_LABEL = { '': '預設', haiku: 'Haiku', sonnet: 'Sonnet', opus: 'Opus' };
+const hubBrain = (m) => BRAIN_NAME[m.brain || 'claude'] || m.brain;
+const canWeb = (m) => m.kind === 'gemini' || m.kind === 'claude' || (m.kind === 'assistant' && ['claude', 'gemini'].includes(m.brain || 'claude'));
+const canAct = (m) => m.kind === 'claude' || (m.kind === 'assistant' && (m.brain || 'claude') === 'claude');
+const hubAv = (m) => `<span class="hav ${m.kind === 'gemini' ? 'gemini' : m.kind === 'web' || m.kind === 'ai' ? 'web' : ''}">${m.kind === 'gemini' ? 'G' : m.kind === 'web' ? 'W' : m.kind === 'assistant' ? '🤖' : m.kind === 'ai' ? 'AI' : 'C'}</span>`;
+const hubSub = (m) => (m.kind === 'gemini' ? `Gemini API（免費額度）${m.web ? ' · 🌐' : ''}` : m.kind === 'web' ? `${m.source} 網頁版 · ${m.date || ''} · 摘要記憶` : m.kind === 'assistant' ? `助手（${hubBrain(m)}）· ${m.role.slice(0, 20)}${m.web ? ' · 🌐' : ''}${m.act ? ' · ✋' : ''}` : m.kind === 'ai' ? '只做討論，不能改檔' : `${m.cwd || ''}${m.web ? ' · 🌐' : ''}${m.act ? ' · ✋' : ''}`);
+const hubKindText = (m) => (!m ? '' : m.kind === 'claude' ? `Claude 對話分身 · ${m.cwd}` : m.kind === 'web' ? `${m.source} 網頁版對話（Gemini 依摘要回答）` : m.kind === 'assistant' ? ((m.brain || 'claude') === 'claude' ? `Claude 助手 · ${m.folder || '沒有指定資料夾'}` : `${hubBrain(m)} 助手 · 只靠聊天室最近的對話，沒有檔案工具`) : m.kind === 'ai' ? m.name : 'Gemini API');
+const hubTime = (t) => new Date(t).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+// The left column's sections fold; which ones are folded is remembered on this browser.
+{
+  const fold = store.get('hubFold', {});
+  for (const d of document.querySelectorAll('.hub-sec')) {
+    if (fold[d.dataset.sec] === false) d.open = false;
+    d.addEventListener('toggle', () => { fold[d.dataset.sec] = d.open; store.set('hubFold', fold); });
+  }
+}
+function hubSecDot(sec, on) {
+  const sum = document.querySelector(`.hub-sec[data-sec="${sec}"] > summary`);
+  let dot = sum.querySelector('.dot');
+  if (on && !dot) { dot = document.createElement('span'); dot.className = 'dot'; sum.appendChild(dot); }
+  if (!on && dot) dot.remove();
+}
+
+async function hubRefresh() {
+  const v = await hubGet('/api/hub').catch(() => null);
+  if (!v || !v.channels) return; // signed out, or the hub is restarting
+  hub.view = v;
+  hubSide();
+  if (hub.cur) {
+    const ch = await hubGet(`/api/hub/channel?id=${encodeURIComponent(hub.cur)}`);
+    if (ch.error) { hub.cur = null; hub.ch = null; } else hub.ch = ch;
+  }
+  hubMain();
+  tokens();
+  usage();
+}
+
+// 📊 The small block: the Claude subscription's windows (as the CLI last reported them) and today's tokens per AI.
+const AI_LABEL = { claude: 'Claude', gemini: 'Gemini', ollama: 'Ollama', openai: 'OpenAI 相容', antigravity: 'Antigravity', other: '其他' };
+const uBar = (pct) => `<div class="u-bar${pct >= 95 ? ' full' : pct >= 80 ? ' warn' : ''}"><i style="width:${Math.min(100, Math.max(2, pct))}%"></i></div>`;
+function uWindow(label, w) {
+  if (!w) return '';
+  const left = w.resetsAt - Date.now();
+  const reset = left <= 0 ? '已重置，等下次回覆更新' : `${left > 36e5 * 24 ? `${Math.round(left / 36e5 / 24)} 天` : left > 36e5 ? `${Math.floor(left / 36e5)} 小時 ${Math.round((left % 36e5) / 6e4)} 分` : `${Math.max(1, Math.round(left / 6e4))} 分`}後重置`;
+  const pct = left <= 0 ? 0 : w.pct;
+  return `<div class="u-row"><div class="u-top"><b>${label}</b><span>已用 ${pct}%・${reset}</span></div>${uBar(pct)}</div>`;
+}
+async function usage(fresh) {
+  const box = hubEl('hubUsage');
+  const u = await (fresh ? post('/api/lite/usage/refresh', {}) : hubGet('/api/lite/usage')).catch(() => null);
+  if (!u || u.error || !u.by) { if (fresh && u) alert(u.error || '刷新失敗'); return; }
+  const cl = u.claude;
+  const have = cl && (cl.fiveHour || cl.sevenDay);
+  const age = have ? `${Math.max(0, Math.round((Date.now() - cl.at) / 6e4))} 分鐘前更新` : '';
+  let html = `<div class="u-row"><div class="u-top"><b>Claude 訂閱</b><span>${esc(age)}</span></div></div>${have ? uWindow('5 小時', cl.fiveHour) + uWindow('7 天', cl.sevenDay) : '<div class="u-note">還沒有資料：Claude 回覆一次就會出現。</div>'}<button class="btn u-btn" id="hubUsageRefresh" title="用一個字的小呼叫重新讀取（會用掉一點點訂閱額度）">🔄 重新讀取</button><button class="btn u-btn" id="hubLedger" title="每次呼叫的明細：哪個聊天室、哪位成員最耗">📈 用量明細</button><div class="u-note">這個百分比是整台電腦共用的（別的視窗用 Claude Code 也會算進去）。</div>`;
+  const rows = Object.entries(u.by).sort((a, b) => b[1].tokens - a[1].tokens);
+  html += `<div class="u-row"><div class="u-top"><b>今天各 AI 用掉的 Token</b></div>${rows.length ? rows.map(([k, v]) => `<div class="u-top"><span>${esc(AI_LABEL[k] || k)}</span><span>${v.tokens.toLocaleString()}（${v.calls} 次）</span></div>`).join('') : '<div class="u-note">今天還沒有回覆。</div>'}${u.by.gemini ? '<div class="u-note">Gemini（Google）不回報剩餘額度，用完才會看到 429 錯誤。</div>' : ''}</div>`;
+  box.innerHTML = html;
+}
+// 📈 The ledger: where the tokens (and, for Claude, the subscription percentage) went.
+const ledgerTable = (title, rows, label = (k) => k) => `<h4 style="margin:12px 0 4px">${title}</h4>${rows.length ? `<table class="ledger"><tr><th></th><th>次數</th><th>輸入</th><th>輸出</th><th>快取命中</th><th>5 小時%</th></tr>${rows.slice(0, 12).map((r) => `<tr><td>${esc(label(r.key))}</td><td>${r.calls}</td><td>${(r.in + r.cacheRead + r.cacheWrite).toLocaleString()}</td><td>${r.out.toLocaleString()}</td><td>${r.cacheRead || r.cacheWrite ? `${Math.round(r.cacheHit * 100)}%` : '—'}</td><td>${r.pct5h || '—'}</td></tr>`).join('')}</table>` : '<div class="none">還沒有紀錄</div>'}`;
+async function ledgerModal() {
+  hubModal('📈 用量明細', '<div class="none">讀取中…</div>');
+  const l = await hubGet('/api/lite/ledger').catch(() => null);
+  if (!l || l.error) { hubEl('hubModalBody').innerHTML = '<div class="none">讀不到明細</div>'; return; }
+  const top = l.top.map((r) => `<tr><td>${esc(r.room || '')}</td><td>${esc(r.member || '')}</td><td>${esc(r.purpose || '')}${r.round ? ` · 第 ${r.round} 輪` : ''}</td><td>${((r.in || 0) + (r.cacheRead || 0) + (r.cacheWrite || 0)).toLocaleString()}</td><td>${(r.out || 0).toLocaleString()}</td></tr>`).join('');
+  const rot = (l.rotations || []).slice(-5).reverse().map((r) => `<tr><td>${esc(r.room || '')}</td><td>${esc(r.member || '')}</td><td>${esc(r.reason || '')}</td><td>${Math.round(((r.ctx || 0) - (r.base || 0)) / 1000)}k</td></tr>`).join('');
+  hubEl('hubModalBody').innerHTML = `<div class="hint">共 ${l.calls} 筆呼叫。Claude 對話為了省額度重新開始過 ${(l.rotations || []).length} 次（累積太多、輪數太多或閒置太久時會自動重開，用摘要接續）。</div>${rot ? `<table class="ledger"><tr><th>聊天室</th><th>成員</th><th>原因</th><th>增長</th></tr>${rot}</table>` : ''}<div class="hint" style="margin-top:6px">「5 小時%」是 Claude 呼叫前後訂閱 5 小時視窗的變化加總（整台電腦共用，同時在別處用 Claude Code 會多算）；Gemini 和其他 AI 沒有這欄。</div>`
+    + ledgerTable('各聊天室', l.byRoom) + ledgerTable('各成員', l.byMember)
+    + ledgerTable('各輪次（只算一般回覆）', l.byRound, (k) => `第 ${k} 輪`) + ledgerTable('用途', l.byPurpose, (k) => ({ reply: '回覆', summary: '整理摘要' }[k] || k))
+    + `<h4 style="margin:12px 0 4px">單次最耗的 10 筆</h4>${top ? `<table class="ledger"><tr><th>聊天室</th><th>成員</th><th>用途</th><th>輸入</th><th>輸出</th></tr>${top}</table>` : '<div class="none">還沒有紀錄</div>'}`;
+}
+hubEl('hubUsage').addEventListener('click', async (e) => {
+  if (e.target.closest('#hubLedger')) return ledgerModal();
+  const b = e.target.closest('#hubUsageRefresh');
+  if (!b) return;
+  b.disabled = true;
+  b.textContent = '讀取中…';
+  await usage(true);
+});
+function hubLater() { clearTimeout(hub.timer); hub.timer = setTimeout(() => { if (started) hubRefresh(); }, 150); }
+
+function hubSide() {
+  const v = hub.view;
+  const groups = v.channels.filter((c) => c.kind === 'group');
+  hubEl('hubGroups').innerHTML = groups.length ? groups.map((c) => `<button class="hub-item${c.id === hub.cur ? ' on' : ''}" data-ch="${esc(c.id)}"><span class="hav group">#</span><span class="tx"><b>${esc(c.name)}</b><small>${c.busy ? `${esc(hubWho(c.busy).name)} 輸入中…` : c.last ? esc(c.last.text) : `${c.members.length} 位成員`}</small></span></button>`).join('') : '<div class="none" style="padding:4px 8px">還沒有群組</div>';
+  hubEl('hubGroupsN').textContent = groups.length || '';
+  hubEl('hubDmsN').textContent = v.members.length || '';
+  hubSecDot('groups', groups.some((c) => c.busy));
+  hubEl('hubDms').innerHTML = v.members.map((m) => {
+    const c = v.channels.find((x) => x.kind === 'dm' && x.members[0] === m.id);
+    return `<button class="hub-item${c && c.id === hub.cur ? ' on' : ''}" data-dm="${esc(m.id)}">${hubAv(m)}<span class="tx"><b>${esc(m.name)}</b><small>${c && c.busy ? '輸入中…' : c && c.last ? esc(c.last.text) : esc(hubSub(m))}</small></span></button>`;
+  }).join('');
+}
+
+// ✋ A confirmation card: the real content, and ✅/❌ that work once.
+const CARD_STATUS = { pending: '⏳ 等你決定', allowed: '✅ 已允許並執行', denied: '❌ 已拒絕', error: '⚠️ 允許了但執行失敗', expired: '⌛ 已作廢', 'auto-denied': '🚫 程式規則擋下' };
+function hubCard(x) {
+  const k = x.card;
+  const m = hubWho(k.member);
+  const open = k.status === 'pending';
+  const more = (shown, total) => (total > shown.length ? `<div class="cardnote">（只顯示前 ${shown.length} 字，全文 ${total} 字）</div>` : '');
+  let body = '';
+  if (k.tool === 'edit_file') body = `<div class="cardwhat">修改 <b>${esc(k.path)}</b>${k.line ? `（第 ${k.line} 行附近）` : ''}</div><div class="diff del"><span>改前</span><pre>${esc(k.old || '')}</pre></div><div class="diff add"><span>改後</span><pre>${esc(k.new || '')}</pre></div>`;
+  else if (k.tool === 'write_file') body = `<div class="cardwhat">${k.existed ? '覆蓋' : '建立'} <b>${esc(k.path)}</b></div>${k.existed ? `<div class="diff del"><span>原本的內容</span><pre>${esc(k.before || '')}</pre>${more(k.before || '', k.beforeLen)}</div>` : ''}<div class="diff add"><span>${k.existed ? '覆蓋成' : '新檔案內容'}</span><pre>${esc(k.content || '')}</pre>${more(k.content || '', k.contentLen)}</div>`;
+  else if (k.tool === 'run_command') body = `<div class="cardwhat">執行指令（在專案資料夾裡）</div><pre class="cmd">${esc(k.command || '')}</pre>`;
+  const why = k.why ? `<div class="cardwhy">💬 助手的說明：${esc(k.why)}</div>` : '';
+  const danger = (k.danger || []).length ? `<div class="cardrisk">🚨 危險：${k.danger.map(esc).join('；')}</div>` : '';
+  const acts = open ? `${(k.danger || []).length ? `<label class="cardok"><input type="checkbox" data-cardok="${esc(k.id)}"> 我看過完整指令，了解風險</label>` : ''}<button class="btn go" data-card="${esc(k.id)}" data-d="allow">✅ 允許（只這一次）</button><button class="btn" data-card="${esc(k.id)}" data-d="deny">❌ 拒絕</button>` : '';
+  return `<div class="card ${esc(k.status)}${(k.danger || []).length ? ' hot' : ''}"><div class="cardhead">✋ ${esc(m.name)} ${esc(x.text.replace(/^✋ [^ ]+ /, ''))}<span class="cardst">${k.auto ? '✅ 自動放行' : esc(CARD_STATUS[k.status] || k.status)}</span></div>${why}${body}${danger}${k.result && k.status !== 'pending' ? `<div class="cardres">${esc(k.result)}</div>` : ''}${acts ? `<div class="cardacts">${acts}</div>` : ''}</div>`;
+}
+
+function hubMain() {
+  const c = hub.ch;
+  hubEl('hubInput').hidden = !c;
+  if (!c) { hubEl('hubHead').innerHTML = ''; return; }
+  const group = c.kind === 'group';
+  hubEl('hubHead').innerHTML = `<b>${group ? '#' : ''}${esc(c.name)}</b><span class="mem">${group ? `成員：主席、${c.members.map((m) => esc(m.name)).join('、')}` : esc(hubKindText(c.members[0]))}</span>
+    ${!group && c.members[0] && c.members[0].kind !== 'gemini' ? `<button class="btn" id="hubUnbind" title="從團隊中樞移除這位成員（原本的對話不受影響）">${['web', 'assistant', 'ai'].includes(c.members[0].kind) ? '🗑 移除成員' : '🔗 解除綁定'}</button>` : ''}${!group && c.members[0] && c.members[0].kind === 'web' ? '<button class="btn" id="hubDigest">📚 看摘要記憶</button>' : ''}
+    ${!group && c.members[0] && canWeb(c.members[0]) ? `<button class="btn" id="hubWeb" title="${c.members[0].kind === 'gemini' ? '讓 Gemini 用 Google 搜尋' : '讓這位成員用 WebSearch／WebFetch 上網查資料（仍然不能改檔或執行指令）'}">🌐 上網：${c.members[0].web ? '開' : '關'}</button>` : ''}${!group && c.members[0] && c.members[0].kind === 'assistant' ? '<button class="btn" id="hubRole" title="修改角色">✏️ 角色</button>' : ''}${!group && c.members[0] && c.members[0].kind === 'assistant' && (c.members[0].brain || 'claude') === 'claude' ? `<button class="btn" id="hubModel" title="換這位助手用的 Claude 模型（越強越耗訂閱額度）">🧠 模型：${esc(MODEL_LABEL[c.members[0].model || ''])}</button>` : ''}${!group && c.members[0] && c.members[0].kind === 'assistant' && (c.members[0].brain || 'claude') === 'claude' ? '<button class="btn" id="hubFolder" title="更改這位助手負責的資料夾">📁 資料夾</button>' : ''}${!group && c.members[0] && canAct(c.members[0]) && c.members[0].act ? `<button class="btn" id="hubAuto" title="資料夾裡的改檔、寫檔和一般指令直接做，不再問你。危險指令、金鑰檔、資料夾以外的路徑還是會問。改檔前會自動備份。">⚡ 全自動：${c.members[0].auto ? '開' : '關'}</button>` : ''}${!group && c.members[0] && canAct(c.members[0]) && c.members[0].act ? `<button class="btn" id="hubSafe" title="只看不改的簡單指令（例如 git status、列出檔案）直接執行，不再問你。測試、安裝、刪除、改檔還是每次都問。">🛡 安全指令放行：${c.members[0].safe ? '開' : '關'}</button>` : ''}${!group && c.members[0] && canAct(c.members[0]) ? `<button class="btn" id="hubAct" title="改檔和執行指令：每一次都要你在畫面上按允許">✋ 可動手：${c.members[0].act ? '開' : '關'}</button>` : ''}
+    ${group ? `<div class="seg" id="hubModeSeg"><button data-m="mention" class="${c.mode === 'mention' ? 'on' : ''}">＠ 點名模式</button><button data-m="auto" class="${c.mode === 'auto' ? 'on' : ''}">🔁 自主協商</button></div>` : ''}
+    ${c.busy ? '<button class="btn" id="hubStop">⏹ 停止</button>' : ''}
+    ${group ? '<button class="btn" id="hubMembers" title="加入或移出成員">👥 成員</button><button class="btn" id="hubDel" title="刪除這個群組（不影響原本的對話）">🗑</button>' : ''}`;
+  hubEl('hubAtBtn').hidden = !group;
+  const names = c.members.map((m) => m.name);
+  const box = hubEl('hubChat');
+  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+  const rows = c.messages.map((x) => {
+    if (x.from === 'system' && x.card) return hubCard(x);
+    if (x.from === 'system') {
+      const hot = (x.hot || []).map((h) => `<button class="btn" data-copy="${esc(h.text)}">📋 複製給「${esc(h.member)}」的熱更新指令</button>`).join('');
+      return `<div class="sys">${esc(x.text)}${x.summary ? `<pre>${esc(x.summary)}</pre>` : ''}${hot ? `<div class="hot">${hot}</div>` : ''}</div>`;
+    }
+    const files = (x.files || []).map((f) => (f.kind === 'image'
+      ? `<a href="/api/hub/file?id=${esc(f.id)}" target="_blank" rel="noopener"><img class="thumb" src="/api/hub/file?id=${esc(f.id)}" alt="${esc(f.name)}" loading="lazy"></a>`
+      : `<a class="fchip" href="/api/hub/file?id=${esc(f.id)}" target="_blank" rel="noopener">${f.kind === 'pdf' ? '📕' : '📄'} ${esc(f.name)}</a>`)).join('');
+    if (x.from === 'chair') return `<div class="cm me"><div><div class="bb">${x.text ? hubMd(x.text, names) : ''}${files ? `<div class="files">${files}</div>` : ''}</div></div><span class="tm">${hubTime(x.at)}</span></div>`;
+    const m = hubWho(x.from);
+    const mark = m.kind === 'claude' && !x.error ? (x.untouched ? '<div class="ok">✅ 原對話未變動（雜湊比對）</div>' : '<div class="warn">⚠️ 原對話檔案有變動（可能是你同時在那邊聊天）</div>') : '';
+    return `<div class="cm${x.error ? ' err' : ''}">${hubAv(m)}<div><div class="nm">${esc(m.name)}</div><div class="bb">${hubMd(x.text, names)}</div>${mark}</div><span class="tm">${hubTime(x.at)}</span></div>`;
+  });
+  if (c.busy) { const m = hubWho(c.busy); rows.push(`<div class="cm">${hubAv(m)}<div><div class="nm">${esc(m.name)}</div><div class="bb typing">輸入中 <i>●</i><i>●</i><i>●</i></div></div></div>`); }
+  box.innerHTML = rows.join('') || `<div class="hub-empty">${group ? (c.mode === 'auto' ? '丟一個議題，大家會輪流發言（最多 3 輪）。' : '用 @名字 點名誰回答，或 @全部。') : '開始聊天吧。'}</div>`;
+  if (atBottom || hub.jump) box.scrollTop = box.scrollHeight;
+  hub.jump = false;
+}
+
+function hubOpen(id) { hub.cur = id; hub.jump = true; hub.pending = []; hubChips(); return hubRefresh(); }
+hubEl('hub').addEventListener('click', async (e) => {
+  const ch = e.target.closest('[data-ch]');
+  const dm = e.target.closest('[data-dm]');
+  if (ch) return hubOpen(ch.dataset.ch);
+  if (dm) {
+    const r = await post('/api/hub/dm', { memberId: dm.dataset.dm });
+    if (r.ok) hubOpen(r.channel.id); else alert(r.error);
+    return;
+  }
+  const mode = e.target.closest('#hubModeSeg button');
+  if (mode) { await post('/api/hub/mode', { channelId: hub.cur, mode: mode.dataset.m }); return hubRefresh(); }
+  if (e.target.closest('#hubStop')) { await post('/api/hub/stop', { channelId: hub.cur }); return; }
+  if (e.target.closest('#hubUnbind')) {
+    const m = hub.ch.members[0];
+    if (!confirm(`從團隊中樞移除「${m.name}」？${m.kind === 'claude' ? '原本的 Claude 對話不受影響，之後可以再綁定。' : m.kind === 'assistant' ? '助手的資料夾副本會刪掉（原資料夾不受影響），它的記憶也不再使用。' : m.kind === 'ai' ? '之後可以再加入。' : '之後要用，需重新匯入。'}`)) return;
+    const r = await post('/api/hub/unbind', { id: m.id });
+    if (!r.ok) { alert(r.error); return; }
+    hub.cur = null; hub.ch = null; return hubRefresh();
+  }
+  const cardBtn = e.target.closest('[data-card]');
+  if (cardBtn) {
+    const id = cardBtn.dataset.card;
+    const ok = hubEl('hubChat').querySelector(`[data-cardok="${CSS.escape(id)}"]`);
+    cardBtn.closest('.cardacts').querySelectorAll('button').forEach((b) => { b.disabled = true; }); // one click is one decision
+    const r = await post('/api/hub/card', { cardId: id, decision: cardBtn.dataset.d, confirmDanger: !!(ok && ok.checked) });
+    if (!r.ok) { alert(r.error || '沒有成功'); }
+    return hubRefresh();
+  }
+  if (e.target.closest('#hubAct')) {
+    const m = hub.ch.members[0];
+    if (!m.act && !confirm(`讓「${m.name}」可以改檔和執行指令？\n\n每一次動作，畫面上都會出現一張卡，顯示完整內容，你按「允許」才會做，而且只做那一次。程式會自動擋下金鑰檔、隱藏檔和專案資料夾以外的路徑，危險指令會標紅。`)) return;
+    const r = await post('/api/hub/act', { id: m.id, on: !m.act });
+    if (!r.ok) alert(r.error);
+    return hubRefresh();
+  }
+  if (e.target.closest('#hubAuto')) {
+    const m = hub.ch.members[0];
+    if (!m.auto && !confirm(`讓「${m.name}」全自動動手？\n\n開了之後，它在負責的資料夾裡改檔、寫檔、執行一般指令，都不會再問你，只會在聊天室留下紀錄卡片。改檔前會自動備份。\n\n還是會跳出卡片問你的：危險指令（刪除、安裝套件、連網路、git push 等）、金鑰和密碼檔、資料夾以外的路徑。\n一輪對話最多自動做 40 件事，超過會改回問你。\n\n你不一定看得懂它做了什麼，所以建議只對信得過的助手開，而且資料夾最好有備份或有 git。`)) return;
+    const r = await post('/api/hub/auto', { id: m.id, on: !m.auto });
+    if (!r.ok) alert(r.error);
+    return hubRefresh();
+  }
+  if (e.target.closest('#hubSafe')) {
+    const m = hub.ch.members[0];
+    if (!m.safe && !confirm(`讓「${m.name}」的「只看不改」指令直接執行？\n\n只有很短的唯讀指令會放行，例如 git status、git log、git diff、列出檔案、查版本。\n測試、安裝、刪除、改檔、連網路、碰金鑰檔的指令，還是每次都會跳出卡片問你。\n放行的指令會在聊天室留下紀錄。`)) return;
+    const r = await post('/api/hub/safe', { id: m.id, on: !m.safe });
+    if (!r.ok) alert(r.error);
+    return hubRefresh();
+  }
+  if (e.target.closest('#hubWeb')) {
+    const m = hub.ch.members[0];
+    if (!m.web && !confirm(m.kind === 'gemini' ? '讓 Gemini 用 Google 搜尋？搜尋時查詢內容會送到 Google。' : `讓「${m.name}」上網查資料？它會用 WebSearch／WebFetch，查詢內容會送出去；仍然不能改檔或執行指令。`)) return;
+    const r = await post('/api/hub/web', { id: m.id, on: !m.web });
+    if (!r.ok) alert(r.error);
+    return hubRefresh();
+  }
+  if (e.target.closest('#hubModel')) {
+    const m = hub.ch.members[0];
+    const v = prompt('這位助手用哪個 Claude 模型？\n留空＝預設；haiku（最省）／sonnet（一般）／opus（最強、最耗額度）', m.model || '');
+    if (v === null) return;
+    const r = await post('/api/hub/assistant/update', { id: m.id, model: v.trim().toLowerCase() });
+    if (!r.ok) alert(r.error);
+    return hubRefresh();
+  }
+  if (e.target.closest('#hubFolder')) {
+    const m = hub.ch.members[0];
+    hubModal('📁 「' + m.name + '」負責的資料夾', '<div style="display:flex;gap:6px"><input class="note" id="fdIn" style="flex:1" placeholder="完整路徑，留空＝不指定" value="' + esc(m.folder || '') + '"><button class="btn" id="fdPick">📂 選擇…</button></div><p class="hint">更換資料夾後，「✋ 可動手」會自動關閉，需要重新開啟。助手的對話記憶不受影響。</p><button class="btn" id="fdSave">儲存</button> <span class="msg" id="fdMsg"></span>');
+    return;
+  }
+  if (e.target.closest('#hubRole')) {
+    const m = hub.ch.members[0];
+    const role = prompt(`「${m.name}」的角色：`, m.role);
+    if (role === null) return;
+    const r = await post('/api/hub/assistant/update', { id: m.id, role });
+    if (!r.ok) alert(r.error);
+    return hubRefresh();
+  }
+  if (e.target.closest('#hubDigest')) {
+    const m = hub.ch.members[0];
+    hubModal(`📚 「${m.name}」的摘要記憶`, `<pre class="ap-sum">${esc(m.digest || '')}</pre>`);
+    return;
+  }
+  if (e.target.closest('#hubMembers')) {
+    const now = new Set(hub.ch.members.map((m) => m.id));
+    hubModal(`👥 「${hub.ch.name}」的成員`, `<div class="hint">勾選要在群組裡的成員。新加入的成員第一次發言時，會看到加入前的對話；移出再加回來，會沿用原本的分身。要拉新的 Claude 對話進來，先按「📥 綁定對話」。</div>
+      <div class="hub-list" style="max-height:none">${hubPickList(now)}</div>
+      <div class="row"><span class="msg" id="hubGMsg"></span><button class="primary" id="hubMSave">儲存</button></div>`);
+    return;
+  }
+  if (e.target.closest('#hubDel')) {
+    if (!confirm(`刪除群組「${hub.ch.name}」？原本的對話不受影響。`)) return;
+    await post('/api/hub/remove', { channelId: hub.cur });
+    hub.cur = null; hub.ch = null; return hubRefresh();
+  }
+  const copy = e.target.closest('[data-copy]');
+  if (copy) {
+    try { await navigator.clipboard.writeText(copy.dataset.copy); copy.textContent = '✅ 已複製，貼到那個 Claude 對話'; } catch { prompt('複製這段文字：', copy.dataset.copy); }
+    return;
+  }
+  const at = e.target.closest('#hubAt button');
+  if (at) {
+    const t = hubEl('hubText');
+    t.value = t.value.replace(/@$/, '') + `@${at.dataset.n} `;
+    hubEl('hubAt').hidden = true; t.focus();
+  }
+});
+
+function hubAtMenu() {
+  if (!hub.ch || hub.ch.kind !== 'group') return;
+  const m = hubEl('hubAt');
+  m.innerHTML = ['全部', ...hub.ch.members.map((x) => x.name)].map((n) => `<button data-n="${esc(n)}">@${esc(n)}</button>`).join('');
+  m.hidden = false;
+}
+hubEl('hubAtBtn').addEventListener('click', () => { const m = hubEl('hubAt'); if (m.hidden) hubAtMenu(); else m.hidden = true; });
+hubEl('hubText').addEventListener('input', (e) => { if (/@$/.test(e.target.value)) hubAtMenu(); else if (!/@\S*$/.test(e.target.value)) hubEl('hubAt').hidden = true; });
+hubEl('hubText').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); hubSend(); } });
+hubEl('hubSend').addEventListener('click', hubSend);
+async function hubSend() {
+  const t = hubEl('hubText');
+  const text = t.value.trim();
+  if ((!text && !hub.pending.length) || !hub.cur) return;
+  if (hub.uploading) { alert('附件還在上傳，請稍等'); return; }
+  const files = hub.pending.map((f) => f.id);
+  t.value = '';
+  hubEl('hubAt').hidden = true;
+  hub.jump = true;
+  const r = await post('/api/hub/say', { channelId: hub.cur, text, files });
+  if (!r.ok) { t.value = text; alert(r.error || '送出失敗'); } else { hub.pending = []; hubChips(); }
+  hubRefresh();
+}
+
+// 📎 Attachments: the 📎 button, pasting a screenshot (Ctrl+V) or dropping files on the chat.
+function hubChips() {
+  hubEl('hubFiles').hidden = !hub.pending.length && !hub.uploading;
+  hubEl('hubFiles').innerHTML = hub.pending.map((f, i) => `<span class="fchip">${f.kind === 'image' ? '🖼' : f.kind === 'pdf' ? '📕' : '📄'} ${esc(f.name)} <button data-unpend="${i}" title="移除">✕</button></span>`).join('')
+    + (hub.uploading ? '<span class="fchip">上傳中…</span>' : '')
+    + (hub.pending.some((f) => f.kind !== 'text') ? '<span class="fnote">🖼 圖片和 PDF 會原樣交給成員（Gemini 那邊無法遮蔽），含密碼或金鑰的截圖請先打碼。</span>' : '');
+}
+async function hubUpload(list) {
+  if (!hub.cur) return;
+  for (const file of list) {
+    const name = file.name && file.name !== 'image.png' ? file.name : `截圖-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.${(file.type.split('/')[1] || 'png').replace('jpeg', 'jpg')}`;
+    hub.uploading = true; hubChips();
+    const r = await fetch(`/api/hub/upload?channelId=${encodeURIComponent(hub.cur)}&name=${encodeURIComponent(name)}`, { method: 'POST', headers: { 'x-studio-hq': 'ceo', 'content-type': 'application/octet-stream' }, body: file })
+      .then(signedOut).then((x) => x.json()).catch((e) => ({ ok: false, error: String(e) }));
+    hub.uploading = false;
+    if (r.ok) hub.pending.push(r.file); else alert(`「${name}」上傳失敗：${r.error}`);
+    hubChips();
+  }
+}
+hubEl('hubAttach').addEventListener('click', () => hubEl('hubFileIn').click());
+hubEl('hubFileIn').addEventListener('change', (e) => { hubUpload([...e.target.files]); e.target.value = ''; });
+hubEl('hubText').addEventListener('paste', (e) => {
+  const files = [...(e.clipboardData && e.clipboardData.files) || []];
+  if (files.length) { e.preventDefault(); hubUpload(files); }
+});
+const hubMainEl = document.querySelector('.hub-main');
+hubMainEl.addEventListener('dragover', (e) => { if (hub.cur) { e.preventDefault(); hubMainEl.classList.add('drop'); } });
+hubMainEl.addEventListener('dragleave', (e) => { if (!hubMainEl.contains(e.relatedTarget)) hubMainEl.classList.remove('drop'); });
+hubMainEl.addEventListener('drop', (e) => { e.preventDefault(); hubMainEl.classList.remove('drop'); if (e.dataTransfer.files.length) hubUpload([...e.dataTransfer.files]); });
+hubEl('hubFiles').addEventListener('click', (e) => { const b = e.target.closest('[data-unpend]'); if (b) { hub.pending.splice(Number(b.dataset.unpend), 1); hubChips(); } });
+hubEl('hubMemo').addEventListener('click', async () => {
+  const b = hubEl('hubMemo');
+  b.disabled = true; b.textContent = '💾 總結中…';
+  const r = await post('/api/hub/memorize', { channelId: hub.cur });
+  b.disabled = false; b.textContent = '💾 總結並寫入記憶';
+  if (!r.ok) alert(r.error || '總結失敗');
+  hub.jump = true;
+  hubRefresh();
+});
+
+const hubPickList = (checked) => hub.view.members.map((m) => `<label><input type="checkbox" value="${esc(m.id)}"${checked.has(m.id) ? ' checked' : ''}> ${hubAv(m)} <span class="tx"><b>${esc(m.name)}</b><small>${esc(hubSub(m))}</small></span></label>`).join('');
+function hubModal(title, html) {
+  hubEl('hubModalTitle').textContent = title;
+  hubEl('hubModalBody').innerHTML = html;
+  hubEl('hubModal').hidden = false;
+}
+hubEl('hubModalClose').addEventListener('click', () => { hubEl('hubModal').hidden = true; });
+const mb = (n) => (n >= 1e6 ? `${Math.round(n / 1e6)} MB` : `${Math.max(1, Math.round(n / 1e3))} KB`);
+// Only the AIs that are actually connected are offered (the rest are listed below with how to connect them).
+const BRAIN_NOTE = { claude: '能讀資料夾、有自己的記憶、可開改檔', gemini: '只靠聊天室對話，可上網搜尋', ollama: '本機，只靠聊天室對話', openai: '只靠聊天室對話', antigravity: '只靠聊天室對話' };
+const notConnected = (list) => (list.some((x) => !x.ok) ? `<div class="hint" style="margin-top:10px">還沒串接（所以沒有列出）：${list.filter((x) => !x.ok).map((x) => `${esc(x.name)} → ${esc(x.hint)}`).join('；')}。設定在團隊中樞資料夾的 .env，改完要重開。</div>` : '');
+hubEl('hubAssistant').addEventListener('click', async () => {
+  hubModal('🤖 新增助手', '<div class="none">檢查已串接的 AI…</div>');
+  const list = await hubGet('/api/hub/brains').catch(() => null);
+  if (!Array.isArray(list)) { hubEl('hubModalBody').innerHTML = '<div class="none">讀不到已串接的 AI，請稍後再試。</div>'; return; }
+  const ok = list.filter((x) => x.ok);
+  // The model row shows only for a brain that has models to choose from (today Claude; a brain without a list has no row).
+  hub.brainModels = Object.fromEntries(ok.filter((x) => Array.isArray(x.models) && x.models.length).map((x) => [x.id, x]));
+  const modelRow = Object.keys(hub.brainModels).length ? '<label class="asrow" id="asModelRow" hidden>模型：<select id="asModel" class="note" style="width:auto"></select> <span class="hint" style="display:inline">越強越耗訂閱額度</span></label>' : '';
+  if (!ok.length) { hubEl('hubModalBody').innerHTML = `<div class="none">還沒有串接任何 AI，沒辦法建立助手。</div>${notConnected(list)}`; return; }
+  hubEl('hubModalBody').innerHTML = `<div class="hint">助手有自己的角色，會被 @ 點名回答，也能一對一聊天。選好大腦後不能更換；只有 Claude 助手能讀負責的資料夾（複製一份給它看，金鑰、密碼檔、隱藏檔不會複製，原資料夾不會被動到）、有自己的記憶、可以開改檔。</div>
+    <input class="note" id="asName" placeholder="名字（例如：審稿員）" maxlength="24" style="margin-top:8px">
+    <label style="display:block;margin-top:8px">大腦：<select id="asBrain" class="note" style="width:auto">${ok.map((x) => `<option value="${esc(x.id)}">${esc(x.name)}：${esc(BRAIN_NOTE[x.id] || '')}</option>`).join('')}</select></label>
+    ${modelRow}
+    <textarea class="note" id="asJob" placeholder="用白話寫它的主要工作（例如：幫我檢查程式有沒有明顯錯誤，用最簡單的話講重點）" rows="3" style="display:block;width:100%;box-sizing:border-box;margin-top:8px;resize:vertical"></textarea>
+    <button class="btn" id="asGen" style="margin-top:6px" title="用 Gemini（免費額度）把上面的描述寫成角色提示詞，生成後可以再修改">✨ 幫我生成角色提示詞</button> <span class="msg" id="asGenMsg"></span>
+    <textarea class="note" id="asRole" placeholder="角色提示詞：可以自己寫，或按上面的按鈕生成後再修改" rows="8" style="display:block;width:100%;box-sizing:border-box;margin-top:8px;resize:vertical"></textarea>
+    <div id="asFolderRow" style="display:flex;gap:6px;margin-top:8px"><input class="note" id="asFolder" placeholder="負責的資料夾完整路徑（可留空）" style="flex:1"><button class="btn" id="asPick" title="開啟選擇資料夾視窗">📂 選擇…</button></div>
+    <label style="display:block;margin-top:8px" id="asWebRow"><input type="checkbox" id="asWeb"> 🌐 允許上網查資料</label>
+    <button class="btn" id="asGo" style="margin-top:8px">建立助手</button> <span class="msg" id="asMsg"></span>${notConnected(list)}`;
+  hubEl('asBrain').dispatchEvent(new Event('change', { bubbles: true })); // hide what the first brain can't do
+});
+hubEl('hubAddAi').addEventListener('click', async () => {
+  hubModal('🔌 加入其他 AI', '<div class="none">檢查已串接的 AI…</div>');
+  const list = await hubGet('/api/hub/brains').catch(() => null);
+  if (!Array.isArray(list)) { hubEl('hubModalBody').innerHTML = '<div class="none">讀不到已串接的 AI，請稍後再試。</div>'; return; }
+  const others = list.filter((x) => ['ollama', 'openai', 'antigravity'].includes(x.id));
+  const ok = others.filter((x) => x.ok);
+  hubEl('hubModalBody').innerHTML = `<div class="hint">這些 AI 只能參與討論（文字），不能看檔案或改檔。送出前會先遮掉金鑰和本機路徑。（Claude 和 Gemini 本來就能用。）</div>
+    ${ok.length ? ok.map((x) => `<div style="margin-top:8px"><button class="btn" data-addai="${esc(x.id)}">＋ ${esc(x.name)}</button></div>`).join('') : '<div class="none" style="margin-top:8px">還沒有串接其他 AI。</div>'}<span class="msg" id="aiMsg"></span>${notConnected(others)}`;
+});
+hubEl('hubModalBody').addEventListener('change', (e) => {
+  if (e.target.id !== 'asBrain') return;
+  const b = e.target.value;
+  hubEl('asFolderRow').hidden = b !== 'claude'; // only Claude has the read-only file tools
+  if (b !== 'claude') hubEl('asFolder').value = '';
+  hubEl('asWebRow').hidden = !['claude', 'gemini'].includes(b); // Claude: WebSearch／WebFetch, Gemini: Google Search
+  if (hubEl('asModelRow')) {
+    const bm = (hub.brainModels || {})[b];
+    hubEl('asModelRow').hidden = !bm;
+    hubEl('asModel').innerHTML = bm ? `<option value="">預設（${esc(bm.defaultModel || '')}）</option>${bm.models.map((x) => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}` : '';
+  }
+  if (hubEl('asWebRow').hidden) hubEl('asWeb').checked = false;
+});
+hubEl('hubModalBody').addEventListener('click', async (e) => {
+  if (e.target.closest('#asPick')) {
+    const btn = e.target.closest('#asPick');
+    if (btn.disabled) return;
+    btn.disabled = true;
+    btn.textContent = '請看選擇視窗…';
+    const r = await post('/api/hub/pickfolder', {});
+    btn.disabled = false;
+    btn.textContent = '📂 選擇…';
+    if (!r.ok) return alert(r.error);
+    if (r.folder) hubEl('asFolder').value = r.folder;
+    return;
+  }
+  if (e.target.closest('#fdPick')) {
+    const btn = e.target.closest('#fdPick');
+    if (btn.disabled) return;
+    btn.disabled = true;
+    btn.textContent = '請看選擇視窗…';
+    const r = await post('/api/hub/pickfolder', {});
+    btn.disabled = false;
+    btn.textContent = '📂 選擇…';
+    if (!r.ok) return alert(r.error);
+    if (r.folder) hubEl('fdIn').value = r.folder;
+    return;
+  }
+  if (e.target.closest('#fdSave')) {
+    const m = hub.ch.members[0];
+    const r = await post('/api/hub/assistant/update', { id: m.id, folder: hubEl('fdIn').value });
+    if (!r.ok) { hubEl('fdMsg').textContent = r.error; return; }
+    hubEl('hubModal').hidden = true;
+    return hubRefresh();
+  }
+  const ai = e.target.closest('[data-addai]');
+  if (ai) {
+    const r = await post('/api/hub/ai', { provider: ai.dataset.addai });
+    hubEl('aiMsg').textContent = r.ok ? `已加入「${r.member.name}」` : r.error;
+    if (r.ok) hubRefresh();
+    return;
+  }
+  if (e.target.closest('#asGen')) {
+    const btn = e.target.closest('#asGen');
+    const had = hubEl('asRole').value.trim();
+    if (had && !confirm('下面已經有角色提示詞，生成後會取代它。要繼續嗎？')) return;
+    btn.disabled = true;
+    hubEl('asGenMsg').textContent = '生成中…';
+    const r = await post('/api/hub/assistant/role', { name: hubEl('asName').value, job: hubEl('asJob').value, brain: hubEl('asBrain').value });
+    btn.disabled = false;
+    if (r.ok) {
+      hubEl('asRole').value = r.role;
+      // The model is only a suggestion, filled in for the Chair to keep or change.
+      const sel = hubEl('asModel');
+      if (r.model && sel && [...sel.options].some((o) => o.value === r.model)) sel.value = r.model;
+      hubEl('asGenMsg').textContent = `已生成，可以直接修改。${r.model && sel ? `建議模型已選「${sel.selectedOptions[0].textContent.split('：')[0]}」${r.modelReason ? `（${r.modelReason}）` : ''}，也可以自己改。` : ''}`;
+    } else hubEl('asGenMsg').textContent = r.error;
+    return;
+  }
+  if (e.target.closest('#asGo')) {
+    const r = await post('/api/hub/assistant', { name: hubEl('asName').value, role: hubEl('asRole').value, folder: hubEl('asFolder').value, web: hubEl('asWeb').checked, brain: hubEl('asBrain').value, model: hubEl('asModel') ? hubEl('asModel').value : '' });
+    if (!r.ok) { hubEl('asMsg').textContent = r.error; return; }
+    hubEl('hubModal').hidden = true;
+    hubRefresh();
+  }
+});
+hubEl('hubBind').addEventListener('click', async () => {
+  hubModal('📥 綁定這台電腦上的 Claude 對話', '<div class="none">掃描中…</div>');
+  const list = await hubGet('/api/hub/sessions');
+  hubEl('hubModalBody').innerHTML = `<div class="hint">綁定後，這個對話會以「分身」加入群組或私聊：帶著原本的記憶，但在這裡說的話不會出現在原本的對話裡，而且只能看檔案、不能改。</div>
+    <input class="note" id="hubBindFind" placeholder="找對話（標題或資料夾）" style="margin-top:8px">
+    <div class="hub-list" id="hubBindRows">${(Array.isArray(list) ? list : []).map((s) => `<div class="row" data-t="${esc(`${s.title} ${s.cwd}`.toLowerCase())}"><span class="tx"><b>${esc(s.title)}</b><small>${esc(s.cwd)} · ${mb(s.size)} · ${new Date(s.mtime).toLocaleString('zh-TW', { hour12: false })}${s.size > 100e6 ? ' · ⚠️ 很長，回覆會比較慢、Token 用得多' : ''}</small></span>${s.bound ? '<span class="chip">已綁定</span>' : `<button class="primary" data-bind="${esc(s.id)}">綁定</button>`}</div>`).join('') || '<div class="none">這台電腦上找不到 Claude Code 對話</div>'}</div>`;
+});
+// 📚 Conversations from the web versions.
+hubEl('hubImport').addEventListener('click', () => {
+  hubModal('📚 匯入網頁版對話', `<div class="hub-import">
+    <div class="hint">網頁版的對話不在這台電腦上，沒辦法做分身。匯入後，Gemini 會把每段對話整理成一份摘要，變成一位成員：它依摘要回答，摘要裡沒有的事會說不記得。送去整理前會先遮掉金鑰和本機路徑。</div>
+    <h4 style="margin:12px 0 4px">方法一：上傳匯出檔（.zip 或 .json）</h4>
+    <ol>
+      <li><b>claude.ai</b>：設定 → 隱私 → 匯出資料，信箱會收到下載連結（.zip）</li>
+      <li><b>ChatGPT</b>：設定 → 資料控制 → 匯出資料（.zip）</li>
+      <li><b>Gemini</b>：takeout.google.com → 只勾「我的活動」→ 活動紀錄選「Gemini Apps」、格式選 JSON（.zip）。Gemini 的紀錄沒有分對話，會依日期分成一段一段</li>
+    </ol>
+    <input type="file" id="hubImpFile" accept=".zip,.json">
+    <div id="hubImpList"></div>
+    <h4 style="margin:14px 0 4px">方法二：直接貼上對話內容</h4>
+    <input class="note" id="hubPasteTitle" maxlength="60" placeholder="幫這段對話取名，例：走地 App 行銷討論（Gemini 網頁版）">
+    <textarea id="hubPasteText" placeholder="把網頁版的對話全選複製後貼在這裡"></textarea>
+    <div class="row"><span class="msg" id="hubPasteMsg"></span><button class="primary" id="hubPasteGo">整理成成員</button></div>
+  </div>`);
+});
+hubEl('hubModal').addEventListener('change', async (e) => {
+  if (e.target.id !== 'hubImpFile' || !e.target.files[0]) return;
+  const f = e.target.files[0];
+  const box = hubEl('hubImpList');
+  box.innerHTML = '<div class="none">讀取中…</div>';
+  const r = await fetch(`/api/hub/import?name=${encodeURIComponent(f.name)}`, { method: 'POST', headers: { 'x-studio-hq': 'ceo', 'content-type': 'application/octet-stream' }, body: f })
+    .then(signedOut).then((x) => x.json()).catch((err) => ({ ok: false, error: String(err) }));
+  if (!r.ok) { box.innerHTML = `<div class="msg" style="color:var(--error)">${esc(r.error)}</div>`; return; }
+  hub.importId = r.importId;
+  box.innerHTML = `<input class="note" id="hubImpFind" placeholder="找對話（標題關鍵字）" style="width:100%;margin-top:8px">
+    <div class="hub-list" id="hubImpRows">${r.conversations.map((c) => `<label data-t="${esc(c.title.toLowerCase())}"><input type="checkbox" value="${esc(c.key)}"${c.bound ? ' disabled' : ''}> <span class="tx"><b>${esc(c.title)}</b><small>${esc(c.source)} · ${esc(c.date)} · ${c.count} 則 · ${c.chars.toLocaleString()} 字${c.bound ? ' · 已匯入' : ''}</small></span></label>`).join('')}</div>
+    <div class="row"><span class="msg" id="hubImpMsg">共 ${r.conversations.length} 段，一次最多勾 10 段</span><button class="primary" id="hubImpGo">把勾選的整理成成員</button></div>`;
+});
+hubEl('hubModal').addEventListener('input', (e) => {
+  const rows = e.target.id === 'hubImpFind' ? hubEl('hubImpRows') : e.target.id === 'hubBindFind' ? hubEl('hubBindRows') : null;
+  if (!rows) return;
+  const q = e.target.value.trim().toLowerCase();
+  for (const l of rows.children) if (l.dataset.t) l.hidden = !!q && !l.dataset.t.includes(q);
+});
+hubEl('hubNewGroup').addEventListener('click', async () => {
+  if (!hub.view) hub.view = await hubGet('/api/hub');
+  hubModal('＋ 新建群組', `<div class="hub-list" style="max-height:none">
+      <input class="note" id="hubGName" maxlength="40" placeholder="群組名稱，例：足球分析行銷群" style="width:100%">
+      ${hubPickList(new Set())}
+      <label><select id="hubGMode" class="btn"><option value="mention">＠ 點名模式（預設）：@ 誰誰才發言</option><option value="auto">🔁 自主協商：大家輪流發言，最多 3 輪</option></select></label>
+    </div>
+    ${hub.view.members.length < 2 ? '<div class="none">成員至少要兩位：先「📥 綁定對話」。</div>' : ''}
+    <div class="row"><span class="msg" id="hubGMsg"></span><button class="primary" id="hubGCreate">建立群組</button></div>`);
+});
+hubEl('hubModal').addEventListener('click', async (e) => {
+  const bind = e.target.closest('[data-bind]');
+  if (bind) {
+    bind.disabled = true;
+    const r = await post('/api/hub/bind', { sessionId: bind.dataset.bind });
+    bind.outerHTML = r.ok ? '<span class="chip">已綁定</span>' : `<span class="msg">${esc(r.error)}</span>`;
+    hubRefresh();
+    return;
+  }
+  if (e.target.closest('#hubMSave')) {
+    const members = [...hubEl('hubModalBody').querySelectorAll('input[type=checkbox]:checked')].map((x) => x.value);
+    const r = await post('/api/hub/members', { channelId: hub.cur, members });
+    if (!r.ok) { hubEl('hubGMsg').textContent = r.error; return; }
+    hubEl('hubModal').hidden = true;
+    hub.jump = true;
+    hubRefresh();
+    return;
+  }
+  if (e.target.closest('#hubGCreate')) {
+    const members = [...hubEl('hubModalBody').querySelectorAll('input[type=checkbox]:checked')].map((x) => x.value);
+    const r = await post('/api/hub/group', { name: hubEl('hubGName').value, members, mode: hubEl('hubGMode').value });
+    if (!r.ok) { hubEl('hubGMsg').textContent = r.error; return; }
+    hubEl('hubModal').hidden = true;
+    hubOpen(r.channel.id);
+    return;
+  }
+  const go = e.target.closest('#hubImpGo');
+  if (go) {
+    const keys = [...hubEl('hubImpRows').querySelectorAll('input:checked')].map((x) => x.value);
+    go.disabled = true;
+    hubEl('hubImpMsg').textContent = `Gemini 整理中（${keys.length} 段，每段約 10～30 秒）…`;
+    const r = await post('/api/hub/import/pick', { importId: hub.importId, keys });
+    go.disabled = false;
+    if (!r.ok) { hubEl('hubImpMsg').textContent = r.error; return; }
+    hubEl('hubImpMsg').textContent = `✅ 已加入 ${r.members.length} 位成員：${r.members.map((m) => m.name).join('、')}。左邊「私聊」可以直接找他們，也能拉進群組。`;
+    hubRefresh();
+    return;
+  }
+  const paste = e.target.closest('#hubPasteGo');
+  if (paste) {
+    paste.disabled = true;
+    hubEl('hubPasteMsg').textContent = 'Gemini 整理中…';
+    const title = hubEl('hubPasteTitle').value;
+    const r = await fetch(`/api/hub/import/paste?title=${encodeURIComponent(title)}&source=${encodeURIComponent('網頁版')}`, { method: 'POST', headers: { 'x-studio-hq': 'ceo', 'content-type': 'text/plain; charset=utf-8' }, body: hubEl('hubPasteText').value })
+      .then(signedOut).then((x) => x.json()).catch((err) => ({ ok: false, error: String(err) }));
+    paste.disabled = false;
+    hubEl('hubPasteMsg').textContent = r.ok ? `✅ 已加入成員「${r.member.name}」，左邊「私聊」可以找到` : r.error;
+    if (r.ok) { hubEl('hubPasteText').value = ''; hubRefresh(); }
+    return;
+  }
+  if (e.target.closest('#setSave')) {
+    const r = await post('/api/lite/settings', { capOn: hubEl('setCapOn').checked, cap: Number(hubEl('setCap').value) });
+    hubEl('setMsg').textContent = r.ok ? '✅ 已儲存' : r.error;
+    if (r.ok) tokens();
+  }
+});
+
+boot();
+</script>
+</body>
+</html>
