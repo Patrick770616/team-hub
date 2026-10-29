@@ -241,7 +241,8 @@
         <div class="hub-at" id="hubAt" hidden></div>
         <div class="hub-files" id="hubFiles" hidden></div>
         <input type="file" id="hubFileIn" multiple hidden accept="image/*,.pdf,.txt,.md,.json,.csv,.log,.xml,.yml,.yaml,.html,.css,.js,.ts,.py,.java,.kt,.go,.dart,.sql">
-        <button class="btn" id="hubAttach" title="附加圖片或檔案（也可以直接貼上截圖，或把檔案拖進聊天室）">📎</button>
+        <button class="btn" id="hubShot" title="截圖：選一個視窗或整個螢幕，按一下就附到訊息上">📸</button>
+        <button class="btn" id="hubAttach" title="附加圖片或檔案（也可以按 📸 截圖、直接貼上截圖，或把檔案拖進聊天室）">📎</button>
         <textarea id="hubText" rows="2" maxlength="8000" placeholder="輸入訊息，Enter 送出、Shift+Enter 換行；群組裡打 @ 點名"></textarea>
         <button class="btn" id="hubAtBtn" title="點名成員">＠</button>
         <button class="primary" id="hubSend">送出</button>
@@ -682,6 +683,25 @@ async function hubUpload(list) {
   }
 }
 hubEl('hubAttach').addEventListener('click', () => hubEl('hubFileIn').click());
+// 📸 One frame of a window or screen the Chair picks (the browser asks), attached like a pasted screenshot.
+hubEl('hubShot').hidden = !(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
+hubEl('hubShot').addEventListener('click', async () => {
+  if (!hub.cur) return;
+  let stream;
+  try { stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false }); } catch { return; } // cancelled
+  try {
+    const v = document.createElement('video');
+    v.srcObject = stream; v.muted = true;
+    await v.play();
+    await new Promise((r) => setTimeout(r, 300)); // let the first real frame arrive
+    const cv = document.createElement('canvas');
+    cv.width = v.videoWidth; cv.height = v.videoHeight;
+    cv.getContext('2d').drawImage(v, 0, 0);
+    const blob = await new Promise((r) => cv.toBlob(r, 'image/png'));
+    if (blob) await hubUpload([new File([blob], 'image.png', { type: 'image/png' })]);
+  } catch (e) { alert('截圖失敗：' + e.message); }
+  finally { stream.getTracks().forEach((t) => t.stop()); }
+});
 hubEl('hubFileIn').addEventListener('change', (e) => { hubUpload([...e.target.files]); e.target.value = ''; });
 hubEl('hubText').addEventListener('paste', (e) => {
   const files = [...(e.clipboardData && e.clipboardData.files) || []];

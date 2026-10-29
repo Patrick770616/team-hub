@@ -247,6 +247,11 @@ const path = require('path');
       hub.syncWorkspace(bot);
       assert.deepStrictEqual(walk(ws.dir).sort(), ['notes.md', 'src/app.js']);
       assert.strictEqual(fs.readFileSync(path.join(ws.dir, 'src', 'app.js'), 'utf8'), 'console.log(2)', 'refreshed copy');
+      put('manifest.webmanifest', '{}'); put('icon.svg', '<svg/>'); put('movie.mp4', 'x');
+      hub.syncWorkspace(bot);
+      assert.ok(fs.existsSync(path.join(ws.dir, 'manifest.webmanifest')) && fs.existsSync(path.join(ws.dir, 'icon.svg')) && !fs.existsSync(path.join(ws.dir, 'movie.mp4')), 'config and svg files are copied, video is not');
+      fs.rmSync(path.join(folder, 'manifest.webmanifest')); fs.rmSync(path.join(folder, 'icon.svg')); fs.rmSync(path.join(folder, 'movie.mp4'));
+      hub.syncWorkspace(bot);
       // A turn: read-only tools, run inside the copy, its own conversation kept and reused.
       const dm = hub.dm(bot.id);
       await hub.post(dm.id, '看一下 app.js').done;
