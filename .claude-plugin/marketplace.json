@@ -1,0 +1,11 @@
+{
+  "name": "team-hub",
+  "owner": { "name": "Patrick770616" },
+  "plugins": [
+    {
+      "name": "team-hub",
+      "source": "./plugin",
+      "description": "從 Claude Code 啟動、關閉「團隊中樞」，並把群組討論總結寫進記憶"
+    }
+  ]
+}

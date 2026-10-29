@@ -1,0 +1,9 @@
+{
+  "name": "team-hub",
+  "version": "0.2.0",
+  "description": "從 Claude Code 啟動、關閉「團隊中樞」、讀聊天室、對群組發話，並把討論總結寫進記憶",
+  "author": { "name": "Patrick770616" },
+  "homepage": "https://github.com/Patrick770616/team-hub",
+  "repository": "https://github.com/Patrick770616/team-hub",
+  "keywords": ["team-hub", "multi-ai", "group-chat"]
+}

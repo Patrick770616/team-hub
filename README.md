@@ -20,6 +20,23 @@
 
 從 GitHub 拿到的人：下載或 `git clone` 之後，雙擊資料夾裡的 `團隊中樞.vbs` 就會啟動；想要桌面捷徑，對它按右鍵「傳送到 → 桌面（建立捷徑）」。
 
+## Claude Code 外掛（可選）
+
+在 Claude Code 裡直接指揮團隊中樞，不用切到瀏覽器。外掛只是遙控器，團隊中樞本體還是要有。
+
+```
+/plugin marketplace add Patrick770616/team-hub
+/plugin install team-hub@team-hub
+```
+
+裝好後可以直接說：
+
+- 「開團隊中樞」「關掉團隊中樞」（找不到資料夾時會先問你要不要下載）
+- 「把剛剛的討論存進記憶」（等於網頁上的「💾 總結並寫入記憶」）
+- 「看一下中樞有哪些群組」「讀『設計討論』最近的訊息」「在『設計討論』問 @小美 這樣好不好」：外掛內建一組工具（`hub_groups`、`hub_read`、`hub_say`、`hub_status`），Claude Code 能直接讀聊天室、對群組發話並帶回覆。發話會讓其他 AI 開始工作、用掉額度，所以只在你要求時才會用；Claude Code 每次用工具前也會先問你。
+
+外掛的檔案在 `plugin/`，控制腳本是 `plugin/scripts/hubctl.js`（只用 Node，登入密碼讀自 `data/server.log`，不會印出來）。
+
 ## 能做什麼
 
 團隊中樞讓你把好幾個 AI 放進同一個聊天室，像 LINE 一樣一起討論，也能一對一私聊。
