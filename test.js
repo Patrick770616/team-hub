@@ -716,6 +716,22 @@ const path = require('path');
       const off = await say(bdm.id, '還是不重開');
       assert.ok(off.resume === big.sessionId, 'STUDIO_ROTATE=0 switches it off');
       delete process.env.STUDIO_ROTATE;
+      // ⚙️ The Chair's knobs: kept in range, saved, and used by the restart rule.
+      assert.strictEqual(hub.t().growth, 30000, 'defaults');
+      assert.throws(() => hub.setTune({ growth: 10 }), /之間/);
+      assert.throws(() => hub.setTune({ recent: 'abc' }), /之間/);
+      hub.setTune({ growth: 200000, recent: 20 });
+      assert.ok(hub.t().growth === 200000 && hub.t().recent === 20 && hub.tuneView().defaults.growth === 30000);
+      assert.ok(JSON.parse(fs.readFileSync(hub.file, 'utf8')).tune.recent === 20, 'saved');
+      big.state.ctx = big.state.base + 99_000;
+      const looser = await say(bdm.id, '門檻調高了');
+      assert.ok(looser.resume === big.sessionId, '99k growth is under the raised 200k limit → no restart');
+      hub.setTune({ rotateOn: false, growth: 5000 });
+      big.state.ctx = big.state.base + 99_000;
+      assert.ok((await say(bdm.id, '關閉自動重開')).resume === big.sessionId, 'switched off');
+      hub.setTune({}, true);
+      assert.ok(hub.t().growth === 30000 && hub.t().rotateOn === true && hub.t().recent === 12, 'reset to the defaults');
+      big.state.ctx = big.state.base; big.state.turns = 0; big.state.at = Date.now();
       // A bound conversation: the new fork comes from the ORIGINAL, never from the grown fork.
       const me = hub.bind(sid);
       const fdm = hub.dm(me.id);

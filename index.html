@@ -346,15 +346,31 @@ async function tokens() {
   chip.classList.toggle('full', b.capOn && b.used >= b.cap);
   return b;
 }
+// 🔄 The restart and catch-up knobs (see TUNE in lib/hub.js). [key, label, unit, what it does]
+const TUNE_ROWS = [
+  ['growth', '內容增長超過', 'tokens', '對話比剛開始多長了這麼多，就自動重開。調高＝重開少、記得更完整，但每次回覆更耗額度。'],
+  ['turns', '聊超過', '輪', '聊到這麼多輪（而且下面那個增長量也到了）才重開。'],
+  ['turnsGrowth', '…而且增長超過', 'tokens', '只聊很多輪但內容很短時不重開，免得白白重開。'],
+  ['idleMin', '閒置超過', '分鐘', '快取大約 5 分鐘過期，之後再讀整段歷史會比較貴。'],
+  ['idleGrowth', '…而且增長超過', 'tokens', '閒置夠久、又長了這麼多才重開。'],
+  ['recent', '重開後原文保留最近', '則', '重開或很久沒發言後，只給最近這幾則原文，更早的變成摘要。調高＝記得更多，更耗額度。'],
+  ['summaryChars', '前情摘要長度', '字', '更早的對話壓成多少字的摘要。調高＝不容易失憶，但多佔一點空間。'],
+];
+const tuneHtml = (tn) => `<h4 style="margin:18px 0 4px">🔄 自動重開與摘要</h4>
+  <div class="hint">Claude 對話太長時會自動重開，改用摘要加最近的對話接續（聊天紀錄不受影響）。任務很長、擔心助手忘事，可以把數字調大；想省額度就調小。</div>
+  <div class="set-row"><label><input type="checkbox" id="tuneOn"${tn.values.rotateOn ? ' checked' : ''}> 開啟自動重開</label></div>
+  ${TUNE_ROWS.map(([k, label, unit, tip]) => `<div class="set-row" title="${esc(tip)}">${label}：<input type="number" data-tune="${k}" min="${tn.limits[k].min}" max="${tn.limits[k].max}" value="${tn.values[k]}"> ${unit} <span class="hint" style="display:inline">（預設 ${tn.defaults[k].toLocaleString()}）</span></div>`).join('')}
+  <div class="row"><span class="msg" id="tuneMsg"></span><button class="btn" id="tuneReset">還原預設</button> <button class="primary" id="tuneSave">儲存</button></div>`;
 hubEl('liteSet').addEventListener('click', async () => {
   const b = await tokens();
   if (!b) return;
+  const tn = await hubGet('/api/hub/tune').catch(() => null);
   hubModal('⚙️ 設定', `<h4 style="margin:12px 0 4px">🔢 每日 Token 上限</h4>
     <div class="hint">每位成員每次回覆用掉的 Token（輸入加輸出）都會算進今天的用量，每天半夜自動歸零。到了上限就不會再開始新的回覆，正在回的那一則會講完。Claude 對話分身每次都會讀進原本的整段對話，很長的對話一次可能就用掉十幾萬。</div>
     <div class="set-row"><label><input type="checkbox" id="setCapOn"${b.capOn ? ' checked' : ''}> 開啟每日上限</label></div>
     <div class="set-row">上限：<input type="number" id="setCap" min="10000" step="100000" value="${b.cap}"> tokens</div>
     <div class="hint">今天（${esc(b.day)}）已用 ${b.used.toLocaleString()} tokens，共 ${b.calls} 次回覆。</div>
-    <div class="row"><span class="msg" id="setMsg"></span><button class="primary" id="setSave">儲存</button></div>`);
+    <div class="row"><span class="msg" id="setMsg"></span><button class="primary" id="setSave">儲存</button></div>${tn ? tuneHtml(tn) : ''}`);
 });
 
 // ------------------------------------------------------------ 💬 the hub (same server code as the office's)
@@ -1055,6 +1071,15 @@ hubEl('hubModal').addEventListener('click', async (e) => {
     paste.disabled = false;
     hubEl('hubPasteMsg').textContent = r.ok ? `✅ 已加入成員「${r.member.name}」，左邊「私聊」可以找到` : r.error;
     if (r.ok) { hubEl('hubPasteText').value = ''; hubRefresh(); }
+    return;
+  }
+  if (e.target.closest('#tuneSave') || e.target.closest('#tuneReset')) {
+    const reset = !!e.target.closest('#tuneReset');
+    const values = { rotateOn: hubEl('tuneOn').checked };
+    for (const i of hubEl('hubModalBody').querySelectorAll('[data-tune]')) values[i.dataset.tune] = i.value;
+    const r = await post('/api/hub/tune', reset ? { reset: true } : { values });
+    if (r.ok && reset) { hubEl('tuneOn').checked = r.values.rotateOn; for (const i of hubEl('hubModalBody').querySelectorAll('[data-tune]')) i.value = r.values[i.dataset.tune]; }
+    hubEl('tuneMsg').textContent = r.ok ? (reset ? '✅ 已還原預設' : '✅ 已儲存，下一則回覆開始生效') : r.error;
     return;
   }
   if (e.target.closest('#setSave')) {
