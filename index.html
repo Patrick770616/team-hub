@@ -116,6 +116,16 @@
   .hub-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--line); }
   .hub-head b { font-size: 15px; }
   .hub-head .mem { color: var(--muted); font-size: 12px; flex: 1; min-width: 120px; }
+  .hub-pins { padding: 6px 12px; border-bottom: 1px solid var(--line); }
+  .hub-pins .pinlist { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow-y: auto; }
+  .hub-pins .pin { display: flex; gap: 8px; align-items: center; font-size: 13px; background: var(--panel); border-left: 3px solid var(--waiting); border-radius: 4px; padding: 3px 4px 3px 8px; }
+  .hub-pins .pin span { flex: 1; word-break: break-word; }
+  .hub-pins .pinempty { color: var(--muted); font-size: 12.5px; }
+  .hub-pins .pinadd { display: flex; gap: 6px; }
+  .hub-pins .pinadd input { flex: 1; min-width: 0; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); font: inherit; font-size: 13px; }
+  .chat .cm .pinbtn { visibility: hidden; border: 0; background: none; cursor: pointer; font-size: 12px; padding: 0 2px; color: var(--muted); }
+  .chat .cm:hover .pinbtn, .chat .cm .pinbtn:focus-visible { visibility: visible; }
+  @media (hover: none) { .chat .cm .pinbtn { visibility: visible; } }
   .hub .chat { max-height: none; flex: 1; border-radius: 0; }
   .hub .chat .cm { max-width: 82%; }
   .hub .chat .cm .bb { cursor: text; white-space: normal; }
@@ -236,6 +246,7 @@
     </aside>
     <div class="hub-main">
       <div class="hub-head" id="hubHead"></div>
+      <div class="hub-pins" id="hubPins" hidden></div>
       <div class="chat" id="hubChat"><div class="hub-empty">👈 從左邊選一個群組或私聊。<br>先按「📥 綁定對話」把這台電腦上的 Claude Code 對話拉進來，<br>再按「＋ 新建群組」讓大家一起討論。</div></div>
       <div class="hub-input" id="hubInput" hidden>
         <div class="hub-at" id="hubAt" hidden></div>
@@ -503,10 +514,25 @@ function hubCard(x) {
   return `<div class="card ${esc(k.status)}${(k.danger || []).length ? ' hot' : ''}"><div class="cardhead">✋ ${esc(m.name)} ${esc(x.text.replace(/^✋ [^ ]+ /, ''))}<span class="cardst">${k.auto ? '✅ 自動放行' : esc(CARD_STATUS[k.status] || k.status)}</span></div>${why}${body}${danger}${k.result && k.status !== 'pending' ? `<div class="cardres">${esc(k.result)}</div>` : ''}${acts ? `<div class="cardacts">${acts}</div>` : ''}</div>`;
 }
 
+// 📌 The decisions pinned in this chat. Redrawn only when they change, so a half-typed new one survives the refreshes.
+function hubPinsBar(c) {
+  const el = hubEl('hubPins');
+  const pins = c.pins || [];
+  const sig = `${c.id}|${hub.pinsOpen ? 1 : 0}|${pins.map((p) => p.id).join(',')}`;
+  el.hidden = false;
+  if (el.dataset.sig === sig) return;
+  el.dataset.sig = sig;
+  const list = pins.map((p) => `<div class="pin"><span>${esc(p.text)}</span><button class="btn" data-unpin="${esc(p.id)}" title="取消釘選">✕</button></div>`).join('')
+    || '<div class="pinempty">還沒有。把大家確定的事釘在這裡，AI 每次回答都一定看得到，不會被摘要漏掉。</div>';
+  el.innerHTML = `<button class="btn" data-pintoggle title="大家已經確定的事：釘在這裡，每位成員每次發言都會看到，不會被自動摘要漏掉">📌 已決定的事 ${pins.length}${hub.pinsOpen ? ' ▲' : ' ▼'}</button>`
+    + (hub.pinsOpen ? `<div class="pinlist">${list}</div><div class="pinadd"><input id="hubPinIn" maxlength="200" placeholder="新增一條（最多 200 字），Enter 送出"><button class="btn" data-pinadd>＋ 釘上去</button></div>` : '');
+}
+
 function hubMain() {
   const c = hub.ch;
   hubEl('hubInput').hidden = !c;
-  if (!c) { hubEl('hubHead').innerHTML = ''; return; }
+  if (!c) { hubEl('hubHead').innerHTML = ''; hubEl('hubPins').hidden = true; return; }
+  hubPinsBar(c);
   const group = c.kind === 'group';
   hubEl('hubHead').innerHTML = `<b>${group ? '#' : ''}${esc(c.name)}</b><span class="mem">${group ? `成員：主席、${c.members.map((m) => esc(m.name)).join('、')}` : esc(hubKindText(c.members[0]))}</span>
     ${!group && c.members[0] && c.members[0].kind !== 'gemini' ? `<button class="btn" id="hubUnbind" title="從團隊中樞移除這位成員（原本的對話不受影響）">${['web', 'assistant', 'ai'].includes(c.members[0].kind) ? '🗑 移除成員' : '🔗 解除綁定'}</button>` : ''}${!group && c.members[0] && c.members[0].kind === 'web' ? '<button class="btn" id="hubDigest">📚 看摘要記憶</button>' : ''}
@@ -527,10 +553,11 @@ function hubMain() {
     const files = (x.files || []).map((f) => (f.kind === 'image'
       ? `<a href="/api/hub/file?id=${esc(f.id)}" target="_blank" rel="noopener"><img class="thumb" src="/api/hub/file?id=${esc(f.id)}" alt="${esc(f.name)}" loading="lazy"></a>`
       : `<a class="fchip" href="/api/hub/file?id=${esc(f.id)}" target="_blank" rel="noopener">${f.kind === 'pdf' ? '📕' : '📄'} ${esc(f.name)}</a>`)).join('');
-    if (x.from === 'chair') return `<div class="cm me"><div><div class="bb">${x.text ? hubMd(x.text, names) : ''}${files ? `<div class="files">${files}</div>` : ''}</div></div><span class="tm">${hubTime(x.at)}</span></div>`;
+    const pinBtn = x.text ? `<button class="pinbtn" data-pin="${esc(x.id)}" title="釘成「已決定的事」">📌</button>` : '';
+    if (x.from === 'chair') return `<div class="cm me"><div><div class="bb">${x.text ? hubMd(x.text, names) : ''}${files ? `<div class="files">${files}</div>` : ''}</div></div>${pinBtn}<span class="tm">${hubTime(x.at)}</span></div>`;
     const m = hubWho(x.from);
     const mark = m.kind === 'claude' && !x.error ? (x.untouched ? '<div class="ok">✅ 原對話未變動（雜湊比對）</div>' : '<div class="warn">⚠️ 原對話檔案有變動（可能是你同時在那邊聊天）</div>') : '';
-    return `<div class="cm${x.error ? ' err' : ''}">${hubAv(m)}<div><div class="nm">${esc(m.name)}</div><div class="bb">${hubMd(x.text, names)}</div>${mark}</div><span class="tm">${hubTime(x.at)}</span></div>`;
+    return `<div class="cm${x.error ? ' err' : ''}">${hubAv(m)}<div><div class="nm">${esc(m.name)}</div><div class="bb">${hubMd(x.text, names)}</div>${mark}</div>${x.error ? '' : pinBtn}<span class="tm">${hubTime(x.at)}</span></div>`;
   });
   if (c.busy) { const m = hubWho(c.busy); rows.push(`<div class="cm">${hubAv(m)}<div><div class="nm">${esc(m.name)}</div><div class="bb typing">輸入中 <i>●</i><i>●</i><i>●</i></div></div></div>`); }
   box.innerHTML = rows.join('') || `<div class="hub-empty">${group ? (c.mode === 'auto' ? '丟一個議題，大家會輪流發言（最多 3 輪）。' : '用 @名字 點名誰回答，或 @全部。') : '開始聊天吧。'}</div>`;
@@ -642,6 +669,27 @@ hubEl('hub').addEventListener('click', async (e) => {
     await post('/api/hub/remove', { channelId: hub.cur });
     hub.cur = null; hub.ch = null; return hubRefresh();
   }
+  if (e.target.closest('[data-pintoggle]')) { hub.pinsOpen = !hub.pinsOpen; hubPinsBar(hub.ch); return; }
+  const unpin = e.target.closest('[data-unpin]');
+  if (unpin) {
+    const r = await post('/api/hub/unpin', { channelId: hub.cur, pinId: unpin.dataset.unpin });
+    if (!r.ok) alert(r.error || '取消失敗');
+    return hubRefresh();
+  }
+  const pinAdd = e.target.closest('[data-pinadd]');
+  const pinMsg = e.target.closest('[data-pin]');
+  if (pinAdd || pinMsg) {
+    let text;
+    if (pinMsg) {
+      const x = hub.ch.messages.find((m) => m.id === pinMsg.dataset.pin);
+      text = prompt('釘成一句話（最多 200 字，可以先改短）：', ((x && x.text) || '').replace(/\s+/g, ' ').slice(0, 200));
+      if (text === null) return;
+    } else text = hubEl('hubPinIn').value;
+    const r = await post('/api/hub/pin', { channelId: hub.cur, text });
+    if (!r.ok) { alert(r.error || '釘選失敗'); return; }
+    hub.pinsOpen = true;
+    return hubRefresh();
+  }
   const copy = e.target.closest('[data-copy]');
   if (copy) {
     try { await navigator.clipboard.writeText(copy.dataset.copy); copy.textContent = '✅ 已複製，貼到那個 Claude 對話'; } catch { prompt('複製這段文字：', copy.dataset.copy); }
@@ -728,6 +776,7 @@ hubMainEl.addEventListener('dragover', (e) => { if (hub.cur) { e.preventDefault(
 hubMainEl.addEventListener('dragleave', (e) => { if (!hubMainEl.contains(e.relatedTarget)) hubMainEl.classList.remove('drop'); });
 hubMainEl.addEventListener('drop', (e) => { e.preventDefault(); hubMainEl.classList.remove('drop'); if (e.dataTransfer.files.length) hubUpload([...e.dataTransfer.files]); });
 hubEl('hubFiles').addEventListener('click', (e) => { const b = e.target.closest('[data-unpend]'); if (b) { hub.pending.splice(Number(b.dataset.unpend), 1); hubChips(); } });
+hubEl('hubPins').addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'hubPinIn') { e.preventDefault(); hubEl('hubPins').querySelector('[data-pinadd]').click(); } });
 hubEl('hubMemo').addEventListener('click', async () => {
   const b = hubEl('hubMemo');
   b.disabled = true; b.textContent = '💾 總結中…';

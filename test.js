@@ -868,6 +868,55 @@ const path = require('path');
       console.log('✓ 📬 catch-up cap: a Claude member that missed more than 12 messages gets the summary + the last 12; fewer → all; switch STUDIO_CATCHUP=0');
     }
 
+    // 📌 Pinned decisions: always in the prompt, not summarised away; a live conversation gets them only when they change.
+    {
+      const { Hub } = require('./lib/hub');
+      const claude = [];
+      const gem = [];
+      const mk = () => new Hub({ dataDir: path.join(tmp, 'pindata'), call: {
+        claude: async (a) => { claude.push(a); return { text: `好${claude.length}`, sessionId: a.resume || 'abababab-0000-1111-2222-333333333333', input: 10, output: 5 }; },
+        gemini: async (a) => { gem.push(a); return { text: '## 核心決議\n- 討論的結論', input: 1, output: 1 }; },
+      } });
+      const hub = mk();
+      const a = hub.addAssistant({ name: '釘釘', role: '測試' });
+      const g = hub.createGroup({ name: '釘選群', members: [a.id, 'gemini'], noFolder: true });
+      const last = () => claude[claude.length - 1].prompt;
+      await hub.post(g.id, '@釘釘 第一句').done;
+      assert.ok(!/已決定的事/.test(last()), 'nothing pinned → no block');
+      assert.throws(() => hub.pin(g.id, '   '), /空的/);
+      assert.throws(() => hub.pin(g.id, 'x'.repeat(201)), /最多 200 字/);
+      hub.pin(g.id, '資料庫用 SQLite');
+      assert.throws(() => hub.pin(g.id, '資料庫用 SQLite'), /已經釘過/);
+      await hub.post(g.id, '@釘釘 第二句').done;
+      assert.ok(/【已決定的事[^】]*】\n1\. 資料庫用 SQLite/.test(last()), 'a new pin reaches a member whose conversation is already live');
+      await hub.post(g.id, '@釘釘 第三句').done;
+      assert.ok(!/已決定的事/.test(last()), 'unchanged list is not sent again to a live conversation');
+      const p2 = hub.pin(g.id, '不做登入功能').pin;
+      await hub.post(g.id, '@釘釘 第四句').done;
+      assert.ok(/1\. 資料庫用 SQLite\n2\. 不做登入功能/.test(last()), 'a changed list is sent whole');
+      // A stateless brain (Gemini) gets them every turn.
+      await hub.post(g.id, '@Gemini 你覺得呢').done;
+      await hub.post(g.id, '@Gemini 再說一次').done;
+      assert.ok(gem.slice(-2).every((x) => JSON.stringify(x).includes('不做登入功能')), 'Gemini sees the pins on every turn');
+      // 💾 The pins go into the memory word for word.
+      const mem = await hub.memorize(g.id);
+      assert.ok(/^## 主席釘選的決定\n- 資料庫用 SQLite\n- 不做登入功能\n\n## 核心決議/.test(mem.summary));
+      // Kept across a restart; unpinning works and tells the member.
+      const again = mk();
+      assert.strictEqual(again.channel(g.id).pins.length, 2);
+      assert.throws(() => hub.unpin(g.id, 'nope'), /找不到/);
+      hub.unpin(g.id, p2.id);
+      hub.unpin(g.id, hub.channel(g.id).pins[0].id);
+      await hub.post(g.id, '@釘釘 第五句').done;
+      assert.ok(/清單現在是空的/.test(last()), 'an emptied list says so once');
+      await hub.post(g.id, '@釘釘 第六句').done;
+      assert.ok(!/已決定的事|清單現在是空的/.test(last()));
+      for (let i = 1; i <= 20; i++) hub.pin(g.id, `第 ${i} 條`);
+      assert.throws(() => hub.pin(g.id, '第 21 條'), /最多釘 20 條/);
+      assert.ok(require('./lib/hubhttp').routes(hub)['POST /api/hub/unpin'] && require('./lib/hubhttp').routes(hub)['POST /api/hub/pin']);
+      console.log('✓ 📌 pinned decisions: in every prompt (a live conversation only when they change), word for word in the memory, kept across restarts, 20 × 200 chars');
+    }
+
     // 📊 The usage block: tokens per AI today, and the Claude subscription's windows.
     {
       const http = require('http');
