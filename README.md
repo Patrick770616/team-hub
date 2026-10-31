@@ -38,6 +38,18 @@
 
 - 「把中樞的助手匯出成 subagent」：每位 Claude 助手變成 `.claude/agents/` 裡的一個檔（角色、模型、能不能上網沿用中樞設定，只能讀檔），之後在 Claude Code 裡就能直接叫它們幫忙。可選放目前專案或全部專案；之後在中樞改了角色，要再匯出一次才會更新。
 
+### 📸 截圖外掛（另一個，獨立）
+
+同一個來源裡還有一個和團隊中樞無關的小外掛 `screenshot`：在任何 Claude 對話裡截圖，不用先存檔。
+
+```
+/plugin install screenshot@team-hub
+```
+
+- `/screenshot`：截整個主螢幕；`/screenshot region`：畫面變暗後拖出要截的範圍（Esc 取消）。輸入框上方也有「整個螢幕」「框選區域」兩個按鈕。
+- 截完直接放進剪貼簿，在輸入框按 Ctrl+V（不行就 Alt+V）貼上，會顯示成縮圖。不會在電腦上留下圖片檔，但會蓋掉剪貼簿原本的內容。
+- 只支援 Windows；程式在 `screenshot-mod/`。
+
 外掛的檔案在 `plugin/`，控制腳本是 `plugin/scripts/hubctl.js`（只用 Node，登入密碼讀自 `data/server.log`，不會印出來）。
 
 ## 能做什麼

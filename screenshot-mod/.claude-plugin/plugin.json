@@ -1,0 +1,5 @@
+{
+  "name": "screenshot",
+  "version": "0.2.0",
+  "description": "截圖：整個螢幕或框選區域，直接放進剪貼簿，不存檔（/screenshot 或輸入框上方的按鈕）"
+}

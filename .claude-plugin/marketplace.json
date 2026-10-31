@@ -6,6 +6,11 @@
       "name": "team-hub",
       "source": "./plugin",
       "description": "從 Claude Code 啟動、關閉「團隊中樞」，並把群組討論總結寫進記憶"
+    },
+    {
+      "name": "screenshot",
+      "source": "./screenshot-mod",
+      "description": "截圖到剪貼簿：整個螢幕或框選區域，/screenshot 或輸入框上方的按鈕（Windows）"
     }
   ]
 }
